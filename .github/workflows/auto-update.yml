@@ -42,7 +42,7 @@ jobs:
             git add .
             git config --local user.email "ec.cheng.16888@gmail.com"
             git config --local user.name "fordes123"
-            git commit -m "Updated at $(date)" -a
+            git commit -m "CI Updated at $(date +'%Y-%m-%d %H:%M:%S')" -a
           fi
 
       - name: GitHub Push
