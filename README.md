@@ -63,6 +63,7 @@
     <li><a href="https://github.com/jdlingyu/ad-wars">ad-wars</a></li> 
     <li><a href="https://gitlab.com/quidsup/notrack-blocklists">NoTrack Tracker Blocklist</a></li> 
     <li><a href="https://gitlab.com/cats-team/adrules/">AdRules(AdGuard Full List)</a></li>
+    <li><a href="https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_2_Base/filter.txt">AdGuard Base</a></li>
 </ul>
 </details>
 
