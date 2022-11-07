@@ -1,4 +1,4 @@
-# Update time: 2022-11-07 09:16:17
+# Update time: 2022-11-07 16:21:18
 # Repo URL: https://github.com/fordes123/adg-rule
 
 0.0.0.0 moonsade.com
@@ -737,7 +737,6 @@
 0.0.0.0 bn2-ris-prod-atm.trafficmanager.net
 0.0.0.0 cds21249.lon.llnw.net
 0.0.0.0 hk2sch130021634.wns.windows.com
-0.0.0.0 a.ads2.msn.com
 0.0.0.0 cds54.ory.llnw.net
 0.0.0.0 bn4sch101123110.wns.windows.com
 0.0.0.0 bn4sch101120814.wns.windows.com
@@ -841,7 +840,6 @@
 0.0.0.0 cds20482.lcy.llnw.net
 0.0.0.0 hk2sch130021852.wns.windows.com
 0.0.0.0 cds840.lon.llnw.net
-0.0.0.0 ads1.msn.com
 0.0.0.0 hk2sch130021217.wns.windows.com
 0.0.0.0 cds406.lcy.llnw.net
 0.0.0.0 cds494.lcy.llnw.net
@@ -924,7 +922,6 @@
 0.0.0.0 b.ads1.msn.com
 0.0.0.0 hk2sch130021554.wns.windows.com
 0.0.0.0 msedge.net
-0.0.0.0 a.rad.msn.com
 0.0.0.0 bn3sch020020322.wns.windows.com
 0.0.0.0 cds1.stn.llnw.net
 0.0.0.0 db3aqu.atdmt.com
@@ -939,9 +936,7 @@
 0.0.0.0 bn3sch020010636.wns.windows.com
 0.0.0.0 hk2sch130021654.wns.windows.com
 0.0.0.0 v10-win.vortex.data.microsoft.com.akadns.net
-0.0.0.0 secure.adnxs.com
 0.0.0.0 cds407.fra.llnw.net
-0.0.0.0 b.rad.msn.com
 0.0.0.0 cds458.lcy.llnw.net
 0.0.0.0 win8.ipv6.microsoft.com
 0.0.0.0 spynetalt.microsoft.com
@@ -958,14 +953,12 @@
 0.0.0.0 cds483.lcy.llnw.net
 0.0.0.0 test.activity.windows.com
 0.0.0.0 hk2sch130021544.wns.windows.com
-0.0.0.0 adnxs.com
 0.0.0.0 cds836.lon.llnw.net
 0.0.0.0 bn4sch101123108.wns.windows.com
 0.0.0.0 cds21207.lon.llnw.net
 0.0.0.0 cds869.lon.llnw.net
 0.0.0.0 telemetry.appex.bing.net
 0.0.0.0 lb1.www.ms.akadns.net
-0.0.0.0 rad.msn.com
 0.0.0.0 bn4sch101122117.wns.windows.com
 0.0.0.0 sqm.telemetry.microsoft.com
 0.0.0.0 vortex.data.microsoft.com
@@ -1008,8 +1001,6 @@
 0.0.0.0 bn4sch101121714.wns.windows.com
 0.0.0.0 uks.b.prd.ags.trafficmanager.net
 0.0.0.0 cds1289.lon.llnw.net
-0.0.0.0 aka-cdn-ns.adtech.de
-0.0.0.0 bs.serving-sys.com
 0.0.0.0 cds21309.lon.llnw.net
 0.0.0.0 schemas.microsoft.akadns.net
 0.0.0.0 alpha.telemetry.microsoft.com
@@ -1036,7 +1027,6 @@
 0.0.0.0 aidps.atdmt.com
 0.0.0.0 hk2sch130020924.wns.windows.com
 0.0.0.0 ac3.msn.com
-0.0.0.0 a.ads1.msn.com
 0.0.0.0 cds21321.lon.llnw.net
 0.0.0.0 cds815.lon.llnw.net
 0.0.0.0 bn3sch020010560.wns.windows.com
@@ -1044,7 +1034,6 @@
 0.0.0.0 cdn.atdmt.com
 0.0.0.0 msntest.serving-sys.com
 0.0.0.0 cds20457.lcy.llnw.net
-0.0.0.0 rad.live.com
 0.0.0.0 cds1285.lon.llnw.net
 0.0.0.0 services.wes.df.telemetry.microsoft.com
 0.0.0.0 bn4sch101121118.wns.windows.com
@@ -1061,7 +1050,6 @@
 0.0.0.0 cds425.lcy.llnw.net
 0.0.0.0 hk2sch130021153.wns.windows.com
 0.0.0.0 onecollector.cloudapp.aria.akadns.net
-0.0.0.0 ads1.msads.net
 0.0.0.0 corp.sts.microsoft.com
 0.0.0.0 insideruser.trafficmanager.net
 0.0.0.0 cds1244.lon.llnw.net
@@ -1438,6 +1426,7 @@
 0.0.0.0 hatsampledc.com
 0.0.0.0 ab.tweakers.nl
 0.0.0.0 ehg-mtv.hitbox.com
+0.0.0.0 a.ads2.msn.com
 0.0.0.0 www.flowerdevon.idps.co.uk
 0.0.0.0 shiiva.fr
 0.0.0.0 voil-le-travail.fr
@@ -1533,6 +1522,7 @@
 0.0.0.0 ad.groupon.com
 0.0.0.0 kt4.kliptracker.com
 0.0.0.0 ads.viber.com
+0.0.0.0 ads1.msn.com
 0.0.0.0 ad24digital.checkm8.com
 0.0.0.0 counteraport.spylog.com
 0.0.0.0 ad3.lbn.ru
@@ -1969,6 +1959,7 @@
 0.0.0.0 gimg.baidu.com
 0.0.0.0 imgserv.adbutler.com
 0.0.0.0 ads.techvibes.com
+0.0.0.0 secure.adnxs.com
 0.0.0.0 www.bretby.plus.com
 0.0.0.0 www.miqsoft.hu
 0.0.0.0 imprammp.taboola.com
@@ -2694,6 +2685,7 @@
 0.0.0.0 windows-several-update.com
 0.0.0.0 orderadipex.findmenow.info
 0.0.0.0 syndication.exoclick.com
+0.0.0.0 b.rad.msn.com
 0.0.0.0 7xc4n.com
 0.0.0.0 canuckmethod.com
 0.0.0.0 answerhub.com
@@ -3524,6 +3516,7 @@
 0.0.0.0 www.firemouth.plus.com
 0.0.0.0 te.nytdigital.com
 0.0.0.0 urlregistrar.net
+0.0.0.0 ads1.msads.net
 0.0.0.0 imotors.fr
 0.0.0.0 minden-egyben.com
 0.0.0.0 texas-diesel.com
@@ -5611,6 +5604,7 @@
 0.0.0.0 gcirm.burlingtonfreepress.com
 0.0.0.0 www.kreaffiliation.com
 0.0.0.0 e-2dj6wgkoandzieq.stats.esomniture.com
+0.0.0.0 a.ads1.msn.com
 0.0.0.0 protection.stpolice.com
 0.0.0.0 loltrain.com
 0.0.0.0 track.msadcenter.ybi.com
@@ -5880,6 +5874,7 @@
 0.0.0.0 ad.bnmla.com
 0.0.0.0 adserver.infotiger.com
 0.0.0.0 assodigitale.fr
+0.0.0.0 rad.msn.com
 0.0.0.0 smartclip.com
 0.0.0.0 247playz.com
 0.0.0.0 liportal.oewabox.at
@@ -6296,6 +6291,7 @@
 0.0.0.0 shichihukuudon.com
 0.0.0.0 ad.kataweb.it
 0.0.0.0 reklam.arabul.com
+0.0.0.0 bs.serving-sys.com
 0.0.0.0 hightrafficads.com
 0.0.0.0 tongji.baidu.com
 0.0.0.0 dcads.sina.com.cn
@@ -6558,6 +6554,7 @@
 0.0.0.0 traffprofit.com
 0.0.0.0 adserver.livejournal.com
 0.0.0.0 netads.hotwired.com
+0.0.0.0 a.rad.msn.com
 0.0.0.0 scyxj.comfortykive.xyz
 0.0.0.0 ph-ad17.focalink.com
 0.0.0.0 ads.northjersey.com
@@ -10930,6 +10927,7 @@
 0.0.0.0 media-angel.de
 0.0.0.0 webkurchatov.ru
 0.0.0.0 adserver.juicyads.com
+0.0.0.0 rad.live.com
 0.0.0.0 k.intellitxt.com
 0.0.0.0 bankofamerica.tt.omtrdc.net
 0.0.0.0 c0.adalyser.com
@@ -11165,6 +11163,7 @@
 0.0.0.0 al.5.p2l.info
 0.0.0.0 imserv00x.adtech.us
 0.0.0.0 www.adtrix.com
+0.0.0.0 adnxs.com
 0.0.0.0 adserver.ro
 0.0.0.0 admonkey.dapper.net
 0.0.0.0 ph-cdn.effectivemeasure.net
@@ -11219,6 +11218,7 @@
 0.0.0.0 www.rtcode.com
 0.0.0.0 latrubune.fr
 0.0.0.0 drugdetox.shengen.ru
+0.0.0.0 aka-cdn-ns.adtech.de
 0.0.0.0 c.at.msn.com
 0.0.0.0 server-stockh.imrworldwide.com
 0.0.0.0 todayresearch.com
