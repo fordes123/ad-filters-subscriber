@@ -38,7 +38,7 @@ jobs:
           if [ -z "$(git status --porcelain)" ]; then 
               exit 0
           else
-            echo "::set-output name=status::success"
+            echo "status=success" >> $GITHUB_OUTPUT
             git add .
             git config --local user.email "ec.cheng.16888@gmail.com"
             git config --local user.name "fordes123"
