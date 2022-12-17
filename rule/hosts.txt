@@ -1,4 +1,4 @@
-# Update time: 2022-12-17 00:16:22
+# Update time: 2022-12-17 08:58:28
 # Repo URL: https://github.com/fordes123/adg-rule
 
 0.0.0.0 moonsade.com
