@@ -54,7 +54,7 @@ duplicate and unsupported rules and categorize them.
     <li><a href="https://github.com/hoshsadiq/adblock-nocoin-list/">adblock-nocoin-list</a></li>
     <li><a href="https://github.com/durablenapkin/scamblocklist">Scam Blocklist</a></li>
     <li><a href="https://someonewhocares.org/hosts/zero/hosts">Dan Pollock's List</a></li>
-    <li><a href="https://cdn.jsdelivr.net/gh/AdguardTeam/FiltersRegistry/filters/filter_15_DnsFilter/filter.txt">AdGuard DNS filter</a></li>
+    <li><a href="https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_15_DnsFilter/filter.txt">AdGuard DNS filter</a></li>
     <li><a href="https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext">Peter Lowe's List</a></li>
     <li><a href="https://abp.oisd.nl/basic/">OISD Blocklist Basic</a></li>
     <li><a href="https://adaway.org/hosts.txt">AdAway Default Blocklist</a></li>
@@ -65,6 +65,7 @@ duplicate and unsupported rules and categorize them.
     <li><a href="https://github.com/jdlingyu/ad-wars">ad-wars</a></li> 
     <li><a href="https://gitlab.com/quidsup/notrack-blocklists">NoTrack Tracker Blocklist</a></li> 
     <li><a href="https://gitlab.com/cats-team/adrules/">AdRules(AdGuard Full List)</a></li>
+    <li><a href="https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_2_Base/filter.txt">AdGuard Base</a></li>
 </ul>
 </details>
 
