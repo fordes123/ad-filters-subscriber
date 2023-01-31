@@ -23,4 +23,9 @@ public class Constant {
      */
     public static final String BASIC_MODIFY_REGEX = "^@@\\|\\||^\\|\\||^@@|\\$important$|\\s#[^#]*$";
 
+    /**
+     * 注释符号
+     */
+    public static final String COMMENT_TEMPLATE = "#### {} \r\n";
+
 }

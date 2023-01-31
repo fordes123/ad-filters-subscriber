@@ -34,7 +34,7 @@ public class Util {
      * @param file    目标文件
      * @param content 内容集合
      */
-    public static void write(File file, Collection<String> content) {
+    public static void writeToFile(File file, Collection<String> content, String ruleUrl) {
         if (CollUtil.isNotEmpty(content)) {
             try (RandomAccessFile accessFile = new RandomAccessFile(file, "rw");
                  FileChannel channel = accessFile.getChannel()) {
@@ -42,14 +42,16 @@ public class Util {
                 FileLock fileLock = null;
                 while (true) {
                     try {
-                        fileLock = channel.tryLock();
+                        channel.tryLock();
                         break;
                     } catch (Exception e) {
                         sleep(1000);
                     }
                 }
                 accessFile.seek(accessFile.length());
+                accessFile.write(StrUtil.format(Constant.COMMENT_TEMPLATE, ruleUrl).getBytes(StandardCharsets.UTF_8));
                 accessFile.write((CollUtil.join(content, StrUtil.CRLF)).getBytes(StandardCharsets.UTF_8));
+                accessFile.write(StrUtil.CRLF.getBytes(StandardCharsets.UTF_8));
                 accessFile.write(StrUtil.CRLF.getBytes(StandardCharsets.UTF_8));
             } catch (IOException ioException) {
                 log.error("写入文件出错，{} => {}", file.getPath(), ioException.getMessage());
@@ -87,7 +89,7 @@ public class Util {
      * 校验内容是指定类型规则
      *
      * @param rule 内容
-     * @param type    规则
+     * @param type 规则
      * @return 结果
      */
     public static boolean validRule(String rule, RuleType type) {
@@ -146,7 +148,7 @@ public class Util {
 
         //去除首尾 基础修饰符号
         if (ReUtil.contains(Constant.BASIC_MODIFY_REGEX, content)) {
-           content = ReUtil.replaceAll(content, Constant.BASIC_MODIFY_REGEX, StrUtil.EMPTY);
+            content = ReUtil.replaceAll(content, Constant.BASIC_MODIFY_REGEX, StrUtil.EMPTY);
         }
 
         return StrUtil.trim(content);

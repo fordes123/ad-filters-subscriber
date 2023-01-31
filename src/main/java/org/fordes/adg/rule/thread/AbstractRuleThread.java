@@ -88,7 +88,7 @@ public abstract class AbstractRuleThread implements Runnable {
                                 log.debug("无效规则: {}", line);
                             }
                         }
-                    }else {
+                    } else {
                         invalid.getAndSet(invalid.get() + 1);
                         log.debug("不是规则: {}", line);
                     }
@@ -96,8 +96,8 @@ public abstract class AbstractRuleThread implements Runnable {
             });
         } catch (Exception e) {
             log.error(ExceptionUtil.stacktraceToString(e));
-        }finally {
-            fileDataMap.forEach(Util::write);
+        } finally {
+            fileDataMap.forEach((k, v) -> Util.writeToFile(k, v, ruleUrl));
             log.info("规则<{}> 耗时 => {} ms 无效数 => {}",
                     ruleUrl, interval.intervalMs(), invalid.get());
         }
