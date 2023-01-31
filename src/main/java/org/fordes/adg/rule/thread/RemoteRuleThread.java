@@ -34,8 +34,8 @@ public class RemoteRuleThread extends AbstractRuleThread {
                 return response.bodyStream();
             }
         }catch (Exception e) {
-            log.error(getRuleUrl());
-            log.error(ExceptionUtil.stacktraceToString(e));
+            log.error(" 规则<{}> 获取失败 => {}", getRuleUrl(), e.getMessage());
+            log.debug(ExceptionUtil.stacktraceToString(e));
         }
         return IoUtil.toStream(new byte[0]);
     }
