@@ -31,19 +31,3 @@
 ||ksmobile.com^$important
 
 !-----------------待定-----------------
-
-#美团推送(大众点评)
-@@||dpmtpush.dianping.com^$important
-
-#阿里推送(未知用途)
-@@||mpush-api.aliyun.com^$important
-
-#小米浏览器 地址栏应用广告
-||exp.sug.browser.miui.com^$important
-||sentry.d.xiaomi.net^$important
-
-#夸克
-@@||quark.cn^$important
-
-#涉及部分UC系登陆、扫码验证等
-@@||uc.cn^$important
