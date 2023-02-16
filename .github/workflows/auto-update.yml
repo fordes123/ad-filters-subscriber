@@ -15,7 +15,9 @@ env:
 jobs:
   Update_Filters:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
+      
     steps:
       - uses: actions/checkout@v3
 
@@ -34,19 +36,12 @@ jobs:
 
       - name: Commit Changes
         id: commit
-        run: |
-          if [ -z "$(git status --porcelain)" ]; then 
-              exit 0
-          else
-            echo "status=success" >> $GITHUB_OUTPUT
-            git add .
-            git config --local user.email "ec.cheng.16888@gmail.com"
-            git config --local user.name "fordes123"
-            git commit -m "CI Updated at $(date +'%Y-%m-%d %H:%M:%S')" -a
-          fi
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: 🚀 CI Updated
 
       - name: GitHub Push
-        if: steps.commit.outputs.status == 'success' && !cancelled()
+        if: steps.commit.outputs.changes_detected == 'true'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
@@ -54,7 +49,6 @@ jobs:
 
       - name: Mirror Refresh
         run: sleep 10 && curl 'https://purge.jsdelivr.net/gh/${{github.repository}}/rule'
-
 
       - name: Delete Workflow Runs
         uses: Mattraks/delete-workflow-runs@v2
