@@ -91,7 +91,8 @@ mvn spring-boot:run
 - fork 本项目
 - 自定义规则订阅 (可选)
     - 参照示例配置，修改配置文件: `src/main/resources/application.yml`，注意本地规则文件应放入项目根目录 `rule` 文件夹
-- 打开 `Github Action` 页面，授权`Workflow`执行，点击 `Run workflow` 或等待自动执行。执行完成后相应规则生成在配置中指定的目录下
+- 打开 `Github Action` 页面，选中左侧 `Update Filters` 授权 `Workflow` 定时执行(⚠ 重要步骤)
+- 点击 `Run workflow` 或等待自动执行。执行完成后相应规则生成在配置中指定的目录下
 
 #### **Codespaces**
 
@@ -101,35 +102,16 @@ mvn spring-boot:run
 <br/>
 <h2 id="c">🎯 规则订阅</h2>
 
-| 名称           | 说明                                                                   |                                             Github                                             |                                         jsDelivr                                         |
-|--------------|:---------------------------------------------------------------------|:----------------------------------------------------------------------------------------------:|:----------------------------------------------------------------------------------------:|
-| `all.txt`    | 去重的规则合集，包含`DOMAIN`、`REGEX`、`MODIFY`、`HOSTS`，适用于 `AdGuard`、`AdBlock`等 |  [Link](https://raw.githubusercontent.com/fordes123/ad-filters-subscriber/main/rule/all.txt)   |  [Link](https://cdn.jsdelivr.net/gh/fordes123/ad-filters-subscriber@main/rule/all.txt)   |
-| `dns.txt`    | 包含 `DOMAIN`、`REGEX`、`HOSTS`规则，适用于`AdGuardHome` 等基于DNS的过滤工具           |  [Link](https://raw.githubusercontent.com/fordes123/ad-filters-subscriber/main/rule/dns.txt)   |  [Link](https://cdn.jsdelivr.net/gh/fordes123/ad-filters-subscriber@main/rule/dns.txt)   |
-| `hosts.txt`  | 仅包含 `HOSTS` 规则，适用于几乎所有设备                                             | [Link](https://raw.githubusercontent.com/fordes123/ad-filters-subscriber/main/rule/hosts.txt)  | [Link](https://cdn.jsdelivr.net/gh/fordes123/ad-filters-subscriber@main/rule/hosts.txt)  |
-| `modify.txt` | 仅包含 `MODIFY` 规则, `modify.txt` + `dns.txt` = `all.txt`                | [Link](https://raw.githubusercontent.com/fordes123/ad-filters-subscriber/main/rule/modify.txt) | [Link](https://cdn.jsdelivr.net/gh/fordes123/ad-filters-subscriber@main/rule/modify.txt) |
-| `mylist.txt` | 本仓库维护的补充规则                                                           | [Link](https://raw.githubusercontent.com/fordes123/ad-filters-subscriber/main/rule/mylist.txt) | [Link](https://cdn.jsdelivr.net/gh/fordes123/ad-filters-subscriber@main/rule/mylist.txt) |
+**⚠ 本仓库不再提供规则订阅，我们更推荐 fork 本项目自行构建规则集.**
 
+下面是使用了本项目进行构建的规则仓库，可在其中寻找合适的规则订阅:
 <details>
-<summary>点击查看上游规则</summary>
+<summary>点击查看</summary>
 <ul>
-    <li><a href="https://github.com/hoshsadiq/adblock-nocoin-list/">adblock-nocoin-list</a></li>
-    <li><a href="https://github.com/durablenapkin/scamblocklist">Scam Blocklist</a></li>
-    <li><a href="https://someonewhocares.org/hosts/zero/hosts">Dan Pollock's List</a></li>
-    <li><a href="https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_15_DnsFilter/filter.txt">AdGuard DNS filter</a></li>
-    <li><a href="https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext">Peter Lowe's List</a></li>
-    <li><a href="https://adaway.org/hosts.txt">AdAway Default Blocklist</a></li>
-    <li><a href="https://github.com/crazy-max/WindowsSpyBlocker">WindowsSpyBlocker</a></li>
-    <li><a href="https://github.com/jdlingyu/ad-wars">ad-wars</a></li>
-    <li><a href="https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_2_Base/filter.txt">AdGuard Base</a></li>
-    <li><a href="https://github.com/TG-Twilight/AWAvenue-Adblock-Rule">AWAvenue-Adblock-Rule</a></li>
-    <li><a href="https://github.com/sbwml/halflife-list">halflife-list</a></li>
-    <li><a href="https://github.com/uniartisan/adblock_list">uniartisan-adblock_list</a></li>
+    <li><a href="https://github.com/xndeye/adblock_list/">xndeye/adblock_list</a></li>
+    <p>欢迎提交 issues 或 pr 留下你的仓库地址~</p>
 </ul>
 </details>
-
-> 我们更推荐 fork 本项目自行构建规则集，但如你准备使用本仓库提供的规则订阅，
-> 须知本仓库仅对规则进行整合，不对第三方规则进行维护，
-> 除 `mylist.txt` 外的任何错误请反馈到规则来源
 
 <br/>
 <h2 id="d">💬 问题反馈</h2>
