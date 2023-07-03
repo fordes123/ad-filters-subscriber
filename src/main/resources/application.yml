@@ -14,13 +14,20 @@ application:
     fault_tolerance: 0.001 #容错率
     warn_limit: 7 #警告阈值, 规则长度小于该值时会输出警告日志
     batch_size: 10000 #写入文件的批次大小
+
+  # 规则源配置，remote为远程规则，local为本地规则，支持多个规则源
   rule:
-    #远程规则
+
+    # 仅支持 http/https，不限定响应内容格式
     remote:
-    #      - 'https://example.org/rule.txt'
-    #本地规则
-    local: #本地规则请将文件移动到项目路径rule目录中
-  #      - 'local-rule.txt'
+      - name: 'example rule' #规则名称
+        path: 'https://example.org/rule.txt' #规则地址
+      - 'https://example.org/rule2.txt' #旧版写法, 不推荐
+
+    #本地规则请将文件放置到项目路径rule目录中
+    local:
+      - name: 'local rule'
+        path: 'local-rule.txt'
   output:
     file_header: |  #输出文件头, 占位符${name}将被替换为文件名，如all.txt,  ${date} 将被替换为当前日期
       [ADFS Adblock List]
