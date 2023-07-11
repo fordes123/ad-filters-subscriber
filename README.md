@@ -54,23 +54,31 @@ application:
   rule:
     #远程规则订阅，仅支持http、https
     remote:
+      # 配置格式1, 名称(name) + URL(path)
+      - name: 规则名称
+        path: 'https://example.com/list.txt'
+
+      # 配置格式2, 匿名URL
       - 'https://example.com/list.txt'
-    #本地规则，请将文件移动到项目路径rule目录中
+
+    #本地规则，请将文件放入项目路径rule目录中，配置格式同上
     local:
-      - 'mylist.txt'
+      - name: private
+        path: 'private.txt'
+
   output:
-    file_header: |  #输出文件头, 占位符${name}将被替换为文件名，如all.txt,  ${date} 将被替换为当前日期
+    file_header: |  #输出文件头, 占位符${name}将被替换为文件名, ${date} 将被替换为当前日期时间
       [ADFS Adblock List]
       ! Title: ${name}
       ! Last Modified: ${date}
       ! Homepage: https://github.com/fordes123/ad-filters-subscriber/
-    path: rule   #规则文件输出路径，相对路径默认从 项目目录开始
+    path: rule   #规则文件输出路径，相对路径默认为程序所在路径
     files:
-      all.txt: #输出文件名
-        - DOMAIN
-        - REGEX
-        - MODIFY
-        - HOSTS
+      all.txt: #输出文件名, 下列表为其包含的规则类型
+        - DOMAIN  #域名规则，仅完整域名
+        - REGEX   #正则规则，包含正则的域名规则，AdGH支持
+        - MODIFY  #修饰规则，添加了一些修饰符号的规则，AdG支持
+        - HOSTS   #Hosts规则
 ```
 
 ---
