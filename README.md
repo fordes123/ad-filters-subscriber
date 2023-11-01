@@ -107,6 +107,14 @@ mvn spring-boot:run
 - 登录 `Github`，点击本仓库右上角 `Code` 按钮，选择并创建新的 `Codespaces`
 - 等待 `Codespaces` 启动，即可直接对本项目进行调试
 
+### 如何更新
+
+当源代码存在更新时，(你的)仓库首页会出现如下图提示:
+<img src="./screen.png">
+
+此时选择 **Sync fork** 再选择 **Update branch** 即可同步更新.  
+(如曾修改过源代码，那么合并可能存在冲突，请谨慎处理)
+
 <br/>
 <h2 id="c">🎯 规则订阅</h2>
 
