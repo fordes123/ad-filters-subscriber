@@ -41,8 +41,9 @@ public class RemoteRuleHandler extends RuleHandler {
 
             if (response.statusCode() == 200) {
                 Optional.of(response.body()).ifPresent(consumer);
+            } else {
+                throw new RuntimeException(String.valueOf(response.statusCode()));
             }
-            throw new RuntimeException(String.valueOf(response.statusCode()));
         } catch (Exception e) {
             log.error("remote rule => {}, get failed  => {}", path, e.getMessage());
         }
