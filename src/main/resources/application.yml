@@ -1,6 +1,6 @@
 spring:
   application:
-    name: adg-rule
+    name: ad-filters-subscriber
   profiles:
     active: prod  #切换至 dev 即可输出调试信息
 
@@ -12,34 +12,38 @@ application:
   config:
     expected_quantity: 2000000  #预期规则数量
     fault_tolerance: 0.001 #容错率
-    warn_limit: 7 #警告阈值, 规则长度小于该值时会输出警告日志
-    batch_size: 10000 #写入文件的批次大小
 
   # 规则源配置，remote为远程规则，local为本地规则，支持多个规则源
   rule:
-
-    # 仅支持 http/https，不限定响应内容格式
+    #远程订阅规则 （！使用前请删除下方示例配置, 注意缩进）
     remote:
-#      - name: 'example rule' #规则名称
-#        path: 'https://example.org/rule.txt' #规则地址
-#      - 'https://example.org/rule2.txt' #旧版写法, 不推荐
+      - name: 'Subscription 1'
+        path: 'https://example.org/rule.txt' #仅支持 http/https，不限定响应内容格式
 
-    #本地规则请将文件放置到项目路径rule目录中
+      - name: 'Subscription 2'
+        path: 'http://example.org/rule.txt'
+
+    #本地规则文件
     local:
-#      - name: 'local rule'
-#        path: 'local-rule.txt'
+      - name: 'local rule'
+        path: 'local-rule.txt' #支持绝对/相对路径
+
+  #输出配置
   output:
-    file_header: |  #输出文件头, 占位符${name}将被替换为文件名，如all.txt,  ${date} 将被替换为当前日期
+    #生成的规则文件头部内容, 占位符${name}将被替换为文件名，如all.txt,  ${date} 将被替换为当前日期
+    file_header: |
       [ADFS Adblock List]
       ! Title: ${name}
       ! Last Modified: ${date}
       ! Homepage: https://github.com/fordes123/ad-filters-subscriber/
-    path: rule   #规则文件输出路径，相对路径默认从 项目目录开始
+
+    path: rule #输出规则文件的路径，支持绝对/相对路径
+    #输出规则文件列表 （！注意缩进）
     files:
       all.txt: #输出文件名
         - DOMAIN  #域名规则，仅完整域名
-        - REGEX   #正则规则，包含正则的域名规则，AdGH支持
-        - MODIFY  #修饰规则，添加了一些修饰符号的规则，AdG支持
+        - REGEX   #正则规则，包含正则的域名规则
+        - MODIFY  #修饰规则，添加了一些修饰符号的规则
         - HOSTS   #Hosts规则
       dns.txt:
         - DOMAIN

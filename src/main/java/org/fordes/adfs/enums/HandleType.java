@@ -1,4 +1,4 @@
-package org.fordes.adg.rule.enums;
+package org.fordes.adfs.enums;
 
 import lombok.AllArgsConstructor;
 

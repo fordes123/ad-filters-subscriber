@@ -1,12 +1,14 @@
-package org.fordes.adg.rule.config;
+package org.fordes.adfs.config;
 
 import lombok.Data;
-import org.fordes.adg.rule.enums.RuleType;
+import org.fordes.adfs.enums.RuleType;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -17,22 +19,11 @@ import java.util.Set;
 @Data
 @Component
 @ConfigurationProperties(prefix = "application.output")
-public class OutputConfig {
+public class OutputProperties {
 
-    /**
-     * 输出文件路径
-     */
-    private String path;
-
-    /**
-     * 输出文件列表
-     */
-    private Map<String, Set<RuleType>> files;
-
-    /**
-     * 输出文件头
-     */
     private String fileHeader;
+    private String path;
+    private Map<String, Set<RuleType>> files;
 
     public void setFiles(Map<String, Set<RuleType>> files) {
         if (files.isEmpty() || files.values().stream().allMatch(Set::isEmpty)) {
@@ -42,7 +33,11 @@ public class OutputConfig {
         this.files = files;
     }
 
+    public void setPath(String path) {
+        this.path = Optional.ofNullable(path).filter(StringUtils::hasText).orElse("rule");
+    }
+
     public boolean isEmpty() {
-        return files.isEmpty() || files.values().stream().allMatch(Set::isEmpty);
+        return files == null || files.isEmpty() || files.values().stream().allMatch(Set::isEmpty);
     }
 }
