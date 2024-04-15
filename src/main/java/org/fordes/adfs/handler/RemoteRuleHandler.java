@@ -14,14 +14,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.Charset;
 import java.time.Duration;
-import java.util.Optional;
-import java.util.function.Consumer;
 
 @Slf4j
 @Component
 public class RemoteRuleHandler extends RuleHandler {
 
     private final Charset charset = Charset.defaultCharset();
+    public static final HttpClient client = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .build();
 
     @Autowired
     public RemoteRuleHandler(BloomFilter<String> filter, FileWriter writer) {
@@ -29,24 +30,16 @@ public class RemoteRuleHandler extends RuleHandler {
     }
 
     @Override
-    protected void getStream(String path, Consumer<InputStream> consumer) {
-
-        try(HttpClient client = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.ALWAYS)
-                    .build()) {
-            HttpResponse<InputStream> response = client.send(HttpRequest
+    protected InputStream getStream(String path) {
+        try {
+            return client.send(HttpRequest
                             .newBuilder(URI.create(path))
                             .GET().timeout(Duration.ofSeconds(10)).build(),
-                    HttpResponse.BodyHandlers.ofInputStream());
-
-            if (response.statusCode() == 200) {
-                Optional.of(response.body()).ifPresent(consumer);
-            } else {
-                throw new RuntimeException(String.valueOf(response.statusCode()));
-            }
+                    HttpResponse.BodyHandlers.ofInputStream()).body();
         } catch (Exception e) {
             log.error("remote rule => {}, get failed  => {}", path, e.getMessage());
         }
+        return InputStream.nullInputStream();
     }
 
     @Override
