@@ -8,6 +8,7 @@ import org.fordes.adfs.event.ExitEvent;
 import org.fordes.adfs.event.StartEvent;
 import org.fordes.adfs.event.StopEvent;
 import org.fordes.adfs.handler.RuleHandler;
+import org.fordes.adfs.util.Util;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -48,6 +49,8 @@ public class Endpoint {
                         isStop = true;
                         log.info("rule parser all done, wait file writer...");
                         publisher.publishEvent(new StopEvent(this));
+                    } else {
+                        Util.sleep(300);
                     }
                 }
             });
@@ -79,7 +82,7 @@ public class Endpoint {
     }
 
     @EventListener(classes = ExitEvent.class)
-    public void exist() throws InterruptedException {
+    public void exist() {
         exitFlag.set(true);
         Optional.of(producer).filter(e -> !e.isTerminated()).ifPresent(ExecutorService::shutdownNow);
         Optional.of(singleExecutor).ifPresent(ExecutorConfigurationSupport::shutdown);

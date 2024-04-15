@@ -15,8 +15,6 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Optional;
-import java.util.function.Consumer;
 
 /**
  * 本地规则处理
@@ -34,17 +32,16 @@ public class LocalRuleHandler extends RuleHandler {
     }
 
     @Override
-    protected void getStream(String path, Consumer<InputStream> consumer) {
-        Optional.ofNullable(path)
-                .filter(StringUtils::hasText)
-                .ifPresent(p -> {
-                    String absPath = Util.normalizePath(p);;
-                    try (InputStream is = Files.newInputStream(Path.of(absPath), StandardOpenOption.READ)) {
-                        Optional.of(is).ifPresent(consumer);
-                    } catch (Exception e) {
-                        log.error("local rule => {}, read failed  => {}", path, e.getMessage());
-                    }
-                });
+    protected InputStream getStream(String path) {
+        try {
+            if (StringUtils.hasText(path)) {
+                String absPath = Util.normalizePath(path);
+                return Files.newInputStream(Path.of(absPath), StandardOpenOption.READ);
+            }
+        } catch (Exception e) {
+            log.error("local rule => {}, read failed  => {}", path, e.getMessage());
+        }
+        return InputStream.nullInputStream();
     }
 
     @Override

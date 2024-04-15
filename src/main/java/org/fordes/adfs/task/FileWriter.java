@@ -114,6 +114,8 @@ public class FileWriter {
                                 writer.write(line);
                                 total++;
                                 writer.newLine();
+                            } else {
+                                Util.sleep(50);
                             }
                         }
 
@@ -134,7 +136,7 @@ public class FileWriter {
             stopFlag = true;
 
             while (!e.isTerminated()) {
-                Util.sleep(500L);
+                Util.sleep(300);
             }
         });
 
@@ -158,7 +160,7 @@ public class FileWriter {
                 while (!flag) {
                     flag = queue.offer(line);
                     if (!flag) {
-                        Util.sleep(300L);
+                        Util.sleep(50);
                     }
                 }
             });
