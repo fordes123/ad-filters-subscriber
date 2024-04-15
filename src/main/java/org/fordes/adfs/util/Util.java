@@ -55,10 +55,6 @@ public class Util {
             log.debug("invalid rule: {}: Detect as Comments", content);
             return EMPTY;
         }
-        if (content.length() >= 1024) {
-            log.debug("invalid rule: {}: Length must be less than 1024", content);
-            return EMPTY;
-        }
 
         //去除首尾 基础修饰符号
         content = BASIC_MODIFY_REGEX.matcher(content).replaceAll(EMPTY);
