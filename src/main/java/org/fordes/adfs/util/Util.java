@@ -18,10 +18,6 @@ public class Util {
 
     public static RuleType validRule(String rule) {
 
-        if (PATTERN_DOMAIN.matcher(rule).matches()) {
-            return RuleType.DOMAIN;
-        }
-
         Matcher matcher = PATTERN_IP.matcher(rule);
         if (matcher.matches()) {
             return RuleType.MODIFY;
@@ -30,6 +26,10 @@ public class Util {
             if (LOCALHOST.equals(pure.trim()) || PATTERN_DOMAIN.matcher(pure.trim()).matches()) {
                 return RuleType.HOSTS;
             }
+        }
+
+        if (PATTERN_DOMAIN.matcher(rule).matches()) {
+            return RuleType.DOMAIN;
         }
 
         String pure = rule.replace(ASTERISK, A).replace(QUESTION_MARK, A);
