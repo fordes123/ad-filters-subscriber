@@ -32,10 +32,15 @@ public class RemoteRuleHandler extends RuleHandler {
     @Override
     protected InputStream getStream(String path) {
         try {
-            return client.send(HttpRequest
+            HttpResponse<InputStream> response = client.send(HttpRequest
                             .newBuilder(URI.create(path))
                             .GET().timeout(Duration.ofSeconds(10)).build(),
-                    HttpResponse.BodyHandlers.ofInputStream()).body();
+                    HttpResponse.BodyHandlers.ofInputStream());
+
+            if (response.statusCode() == 200) {
+                return response.body();
+            }
+            throw new RuntimeException("http status code: " + response.statusCode());
         } catch (Exception e) {
             log.error("remote rule => {}, get failed  => {}", path, e.getMessage());
         }

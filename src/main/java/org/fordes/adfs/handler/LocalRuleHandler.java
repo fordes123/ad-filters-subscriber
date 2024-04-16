@@ -6,7 +6,6 @@ import org.fordes.adfs.task.FileWriter;
 import org.fordes.adfs.util.BloomFilter;
 import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -22,7 +21,6 @@ import java.nio.file.StandardOpenOption;
  * @author fordes on 2022/7/7
  */
 @Slf4j
-@EnableAsync
 @Component
 public class LocalRuleHandler extends RuleHandler {
 
