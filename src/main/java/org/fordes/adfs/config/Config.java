@@ -22,6 +22,7 @@ public class Config {
 
     private Double faultTolerance = 0.0001;
     private Integer expectedQuantity = 2000000;
+    private Integer warnLimit = 6;
 
     @Bean
     public BloomFilter<String> bloomFilter() {

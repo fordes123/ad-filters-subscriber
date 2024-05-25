@@ -1,6 +1,7 @@
 package org.fordes.adfs.handler;
 
 import lombok.extern.slf4j.Slf4j;
+import org.fordes.adfs.config.Config;
 import org.fordes.adfs.enums.HandleType;
 import org.fordes.adfs.task.FileWriter;
 import org.fordes.adfs.util.BloomFilter;
@@ -25,8 +26,8 @@ public class RemoteRuleHandler extends RuleHandler {
             .build();
 
     @Autowired
-    public RemoteRuleHandler(BloomFilter<String> filter, FileWriter writer) {
-        super(filter, writer);
+    public RemoteRuleHandler(BloomFilter<String> filter, FileWriter writer, Config config) {
+        super(filter, writer, config);
     }
 
     @Override

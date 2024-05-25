@@ -12,6 +12,7 @@ application:
   config:
     expected_quantity: 2000000  #预期规则数量
     fault_tolerance: 0.001 #容错率
+    warn_limit: 6 #警告阈值, 原始规则长度小于该值时会输出警告日志
 
   # 规则源配置，remote为远程规则，local为本地规则，支持多个规则源
   rule:

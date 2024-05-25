@@ -2,6 +2,7 @@ package org.fordes.adfs.handler;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.fordes.adfs.config.Config;
 import org.fordes.adfs.config.InputProperties;
 import org.fordes.adfs.enums.HandleType;
 import org.fordes.adfs.enums.RuleType;
@@ -30,6 +31,7 @@ public abstract class RuleHandler implements InitializingBean {
 
     protected BloomFilter<String> filter;
     protected FileWriter writer;
+    protected Config config;
     protected static final Map<HandleType, RuleHandler> handlerMap = new HashMap<>(HandleType.values().length);
 
     protected final void register(HandleType type, RuleHandler handler) {
@@ -75,6 +77,11 @@ public abstract class RuleHandler implements InitializingBean {
                                 }))
                         //写入阻塞队列
                         .ifPresent(e -> {
+
+                            if (original.length() <= config.getWarnLimit()) {
+                                log.warn("[{}] Suspicious rule => {}",prop.name(), original);
+                            }
+
                             filter.add(original);
                             effective.incrementAndGet();
                             writer.put(original, e.getValue());
