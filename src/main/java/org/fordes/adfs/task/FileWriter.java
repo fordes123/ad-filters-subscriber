@@ -95,7 +95,8 @@ public class FileWriter {
                 consumer.execute(() -> {
 
                     try (BufferedWriter writer = Files.newBufferedWriter(Path.of(dir + FILE_SEPARATOR + fileName),
-                            StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                            StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING,
+                            StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
 
                         // 写入文件头
                         if (StringUtils.hasText(output.getFileHeader())) {
