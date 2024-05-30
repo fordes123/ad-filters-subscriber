@@ -1,7 +1,9 @@
 package org.fordes.adfs.config;
 
+import lombok.Data;
 import org.apache.logging.log4j.util.Strings;
 import org.fordes.adfs.enums.HandleType;
+import org.fordes.adfs.enums.RuleSet;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +13,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Data
 @Component
 @ConfigurationProperties(prefix = "application.rule")
 public class InputProperties {
@@ -37,9 +40,10 @@ public class InputProperties {
                 .map(e -> e.stream().filter(p -> !p.path.isEmpty()).collect(Collectors.toSet())).orElse(Set.of());
     }
 
-    public record Prop(String name, String path) {
+    public record Prop(String name, RuleSet type, String path) {
 
-        public Prop(String name, String path) {
+        public Prop(String name, RuleSet type, String path) {
+            this.type = Optional.ofNullable(type).orElse(RuleSet.EASYLIST);
             this.name = Optional.ofNullable(name).orElse(Strings.EMPTY).trim();
             this.path = Optional.ofNullable(path).orElse(Strings.EMPTY).trim();
         }

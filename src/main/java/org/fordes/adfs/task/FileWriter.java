@@ -2,10 +2,11 @@ package org.fordes.adfs.task;
 
 import lombok.extern.slf4j.Slf4j;
 import org.fordes.adfs.config.OutputProperties;
-import org.fordes.adfs.enums.RuleType;
 import org.fordes.adfs.event.ExitEvent;
 import org.fordes.adfs.event.StartEvent;
 import org.fordes.adfs.event.StopEvent;
+import org.fordes.adfs.handler.rule.Handler;
+import org.fordes.adfs.model.Rule;
 import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -20,7 +21,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -39,8 +41,8 @@ public class FileWriter {
     private final OutputProperties output;
     private final ExecutorService consumer;
 
-    protected Map<String, BlockingQueue<String>> fileQueueMap = Map.of();
-    protected Map<RuleType, Set<String>> typeFileMap = Map.of();
+    protected Map<String, BlockingQueue<String>> fileQueueMap;
+    //    protected Map<RuleSet, Set<String>> typeFileMap = Map.of();
     private static Boolean stopFlag = null;
 
     @Autowired
@@ -52,20 +54,12 @@ public class FileWriter {
         Optional.ofNullable(output)
                 .filter(e -> !e.isEmpty())
                 .ifPresentOrElse(opt -> {
-                    this.typeFileMap = new HashMap<>(opt.getFiles().size());
-                    this.fileQueueMap = opt.getFiles().entrySet().stream()
-                            .peek(e -> e.getValue().forEach(type -> {
-                                if (typeFileMap.containsKey(type)) {
-                                    typeFileMap.get(type).add(e.getKey());
-                                } else {
-                                    typeFileMap.put(type, new HashSet<>() {{
-                                        add(e.getKey());
-                                    }});
-                                }
-                            }))
+//                    this.typeFileMap = new HashMap<>(opt.getFiles().size());
+                    this.fileQueueMap = opt.getFiles()
+                            .stream()
                             .map(e -> {
                                 final ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<>(1000);
-                                return Map.entry(e.getKey(), queue);
+                                return Map.entry(e.name(), queue);
                             })
                             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
                 }, () -> {
@@ -149,21 +143,24 @@ public class FileWriter {
     /**
      * 接收规则并写入阻塞队列
      *
-     * @param line 经校验和格式化后的规则
-     * @param type 规则类型
+     * @param rule {@link Rule}
      */
-    public void put(String line, RuleType type) {
-        Optional.ofNullable(type).ifPresent(e -> {
-            typeFileMap.getOrDefault(e, Set.of()).forEach(file -> {
-                BlockingQueue<String> queue = fileQueueMap.get(file);
+    public void put(Rule rule) {
+        Optional.ofNullable(rule).ifPresent(r -> {
 
-                boolean flag = false;
-                while (!flag) {
-                    flag = queue.offer(line);
-                    if (!flag) {
-                        Util.sleep(50);
-                    }
-                }
+            output.getFiles().forEach(e -> {
+                BlockingQueue<String> queue = fileQueueMap.get(e.name());
+                Optional.ofNullable(Handler.getHandler(e.type()).format(r))
+                        .filter(s -> !s.isEmpty())
+                        .ifPresent(line -> {
+                            boolean flag = false;
+                            while (!flag) {
+                                flag = queue.offer(line);
+                                if (!flag) {
+                                    Util.sleep(50);
+                                }
+                            }
+                        });
             });
         });
     }

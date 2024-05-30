@@ -5,6 +5,9 @@ import org.fordes.adfs.constant.RegConstants;
 import org.fordes.adfs.enums.RuleType;
 import org.springframework.util.StringUtils;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 
 import static org.fordes.adfs.constant.Constants.*;
@@ -16,13 +19,68 @@ import static org.fordes.adfs.constant.RegConstants.*;
 @Slf4j
 public class Util {
 
+    public static boolean startWithAny(String content, String... prefix) {
+        return Arrays.stream(prefix).anyMatch(content::startsWith);
+    }
+
+    public static boolean startWithAll(String content, String... prefix) {
+        return Arrays.stream(prefix).allMatch(content::startsWith);
+    }
+
+    public static boolean between(String content, String start, String end) {
+        return content.startsWith(start) && content.endsWith(end);
+    }
+
+    public static String subBefore(String content, String flag, boolean isLast) {
+        int index = isLast? content.lastIndexOf(flag) : content.indexOf(flag);
+        if (index > 0) {
+            return content.substring(0, index);
+        }
+        return EMPTY;
+    }
+
+    public static String subAfter(String content, String flag, boolean isLast) {
+        int index = isLast? content.lastIndexOf(flag) : content.indexOf(flag);
+        if (index > 0) {
+            return content.substring(index + 1);
+        }
+        return EMPTY;
+    }
+
+    public static List<String> splitIgnoreBlank(String content, String flag) {
+        return Arrays.stream(content.split(flag))
+                .filter(e -> !e.isBlank())
+                .toList();
+    }
+
+    public static boolean equalsAny(String content, String... values) {
+        return Arrays.asList(values).contains(content);
+    }
+
+    public static boolean equalsAnyIgnoreCase(String content, String... values) {
+        return Arrays.stream(values).anyMatch(content::equalsIgnoreCase);
+    }
+
+    public static Map.Entry<String, String> applyIfHosts(String content) {
+        List<String> list = splitIgnoreBlank(content, WHITESPACE);
+        if (list.size() == 2) {
+            String ip = list.get(0).trim();
+            String domain = list.get(1).trim();
+
+            if (PATTERN_IP.matcher(ip).matches() && PATTERN_DOMAIN.matcher(domain).matches()) {
+                return Map.entry(ip, domain);
+            }
+        }
+        return null;
+    }
+
     public static RuleType validRule(String rule) {
 
         Matcher matcher = PATTERN_IP.matcher(rule);
         if (matcher.matches()) {
             return RuleType.MODIFY;
-        } else if (rule.startsWith(LOCALHOST_V6) || matcher.find()) {
-            String pure = matcher.replaceAll(EMPTY).replace(LOCALHOST_V6, EMPTY);
+        } else if (rule.startsWith(LOCAL_V6) || matcher.find()) {
+            String pure = matcher.replaceAll(EMPTY).replace(LOCAL_V6, EMPTY);
             if (LOCALHOST.equals(pure.trim()) || PATTERN_DOMAIN.matcher(pure.trim()).matches()) {
                 return RuleType.HOSTS;
             }
@@ -32,7 +90,7 @@ public class Util {
             return RuleType.DOMAIN;
         }
 
-        String pure = rule.replace(ASTERISK, A).replace(QUESTION_MARK, A);
+        String pure = rule.replace(ASTERISK_C, A_C).replace(QUESTION_MARK_C, A_C);
         if (PATTERN_DOMAIN.matcher(pure).matches()) {
             return RuleType.REGEX;
         }

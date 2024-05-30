@@ -1,13 +1,14 @@
 package org.fordes.adfs.config;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import lombok.Data;
-import org.fordes.adfs.enums.RuleType;
+import org.fordes.adfs.constant.Constants;
+import org.fordes.adfs.enums.RuleSet;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.Collections;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -23,14 +24,16 @@ public class OutputProperties {
 
     private String fileHeader;
     private String path;
-    private Map<String, Set<RuleType>> files;
+    private Set<OutputFile> files;
 
-    public void setFiles(Map<String, Set<RuleType>> files) {
-        if (files.isEmpty() || files.values().stream().allMatch(Set::isEmpty)) {
-            this.files = Collections.emptyMap();
-            return;
+    public record OutputFile(@Nonnull String name, @Nonnull RuleSet type, @Nullable String desc) {
+
+        public OutputFile(String name, RuleSet type, String desc) {
+            this.name = Optional.ofNullable(name).filter(StringUtils::hasText).orElseThrow(() -> new IllegalArgumentException("application.output.files.name is required"));
+            this.type = Optional.ofNullable(type).orElseThrow(() -> new IllegalArgumentException("application.output.files.type is required"));
+            this.desc = Optional.ofNullable(desc).filter(StringUtils::hasText).orElse(Constants.EMPTY);
         }
-        this.files = files;
+
     }
 
     public void setPath(String path) {
@@ -38,6 +41,6 @@ public class OutputProperties {
     }
 
     public boolean isEmpty() {
-        return files == null || files.isEmpty() || files.values().stream().allMatch(Set::isEmpty);
+        return files == null || files.isEmpty();
     }
 }

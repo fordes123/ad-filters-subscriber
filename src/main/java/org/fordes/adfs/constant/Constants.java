@@ -12,10 +12,33 @@ public class Constants {
     public static final String HEADER_DATE = "${date}";
     public static final String HEADER_NAME = "${name}";
     public static final String HEADER_TOTAL = "${total}";
-    public static final char ASTERISK = '*';
-    public static final char QUESTION_MARK = '?';
-    public static final char A = 'a';
-    public static final String LOCALHOST_V6 = "::1";
-    public static final String LOCALHOST = "localhost";
 
+    public static final char ASTERISK_C = '*';
+    public static final char QUESTION_MARK_C = '?';
+    public static final char A_C = 'a';
+    public static final String LOCAL_V6 = "::1";
+    public static final String LOCALHOST = "localhost";
+    public static final String LOCAL_V4 = "127.0.0.1";
+    public static final String EXCLAMATION = "!";
+    public static final String HASH = "#";
+    public static final String AT = "@";
+    public static final String PERCENT = "%";
+    public static final String DOLLAR = "$";
+    public static final String UNDERLINE = "_";
+    public static final String DASH = "-";
+    public static final String TILDE = "~";
+    public static final String COMMA = ",";
+    public static final String SLASH = "/";
+    public static final String LEFT_BRACKETS = "[";
+    public static final String RIGHT_BRACKETS = "]";
+    public static final String OR = "||";
+    public static final String ASTERISK = "*";
+    public static final String QUESTION_MARK = "?";
+    public static final String A = "a";
+    public static final String CARET = "^";
+    public static final String WHITESPACE = " ";
+
+    public static final String ALLOW_PREFIX = "@@||";
+    public static final String IMPORTANT = "$important";
+    public static final String TAB = "\t";
 }

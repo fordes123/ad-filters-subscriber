@@ -1,6 +1,7 @@
 package org.fordes.adfs.config;
 
 import lombok.Data;
+import org.fordes.adfs.model.Rule;
 import org.fordes.adfs.util.BloomFilter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
@@ -25,7 +26,7 @@ public class Config {
     private Integer warnLimit = 6;
 
     @Bean
-    public BloomFilter<String> bloomFilter() {
+    public BloomFilter<Rule> bloomFilter() {
         double falsePositiveProbability = Optional.ofNullable(faultTolerance).orElse(0.0001);
         int expectedNumberOfElements = Optional.ofNullable(expectedQuantity).orElse(2000000);
         return new BloomFilter<>(falsePositiveProbability, expectedNumberOfElements);

@@ -18,8 +18,9 @@ application:
   rule:
     #远程订阅规则 （！使用前请删除下方示例配置, 注意缩进）
     remote:
-      - name: 'Subscription 1'
-        path: 'https://example.org/rule.txt' #仅支持 http/https，不限定响应内容格式
+      - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
+        path: 'https://example.org/rule.txt' #必要参数: 规则url，仅支持 http/https，不限定响应内容格式
+        type: easylist                       #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
 
       - name: 'Subscription 2'
         path: 'http://example.org/rule.txt'
@@ -31,30 +32,29 @@ application:
 
   #输出配置
   output:
-    #生成的规则文件头部内容, 占位符${name}将被替换为文件名，如all.txt,  ${date} 将被替换为当前日期
+    #文件头配置，将自动作为注释添加至每个规则文件开始
+    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)
     file_header: |
-      [ADFS Adblock List]
-      ! Title: ${name}
-      ! Last Modified: ${date}
-      ! Homepage: https://github.com/fordes123/ad-filters-subscriber/
+      ADFS Adblock List
+      Title: ${name}
+      Last Modified: ${date}
+      Homepage: https://github.com/fordes123/ad-filters-subscriber/
 
     path: rule #输出规则文件的路径，支持绝对/相对路径
-    #输出规则文件列表 （！注意缩进）
+    #输出规则文件列表 （！注意缩进，且每个类型只能输出一个文件）
     files:
-      all.txt: #输出文件名
-        - DOMAIN  #域名规则，仅完整域名
-        - REGEX   #正则规则，包含正则的域名规则
-        - MODIFY  #修饰规则，添加了一些修饰符号的规则
-        - HOSTS   #Hosts规则
-      dns.txt:
-        - DOMAIN
-        - REGEX
-        - HOSTS
-      hosts.txt:
-        - HOSTS
-      regex.txt:
-        - REGEX
-      domain.txt:
-        - DOMAIN
-      modify.txt:
-        - MODIFY
+      - name: easylist.txt     #必要参数: 文件名
+        type: EASYLIST         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
+
+      - name: dnsmasq.txt
+        type: DNSMASQ
+
+      - name: clash.yaml
+        type: CLASH
+
+      - name: smartdns.txt
+        type: SMARTDNS
+
+      - name: hosts.txt
+        type: HOSTS
