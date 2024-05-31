@@ -8,6 +8,7 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
 
@@ -44,6 +45,13 @@ public final class HostsHandler extends Handler implements InitializingBean {
             return rule.getDest() + TAB + rule.getTarget();
         }
         return null;
+    }
+
+    @Override
+    public String commented(String value) {
+        return Util.splitIgnoreBlank(value, LF).stream()
+                .map(e -> HASH + WHITESPACE + e.trim())
+                .collect(Collectors.joining(CRLF));
     }
 
     @Override

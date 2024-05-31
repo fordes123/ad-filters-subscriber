@@ -7,10 +7,8 @@ import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
 import static org.fordes.adfs.constant.RegConstants.PATTERN_DOMAIN;
@@ -37,7 +35,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         }
 
         //不处理修饰规则
-        if (line.contains(DOLLAR)) {
+        if (line.contains(DOLLAR) || (line.contains(CARET) && !line.endsWith(CARET))) {
             rule.setType(Rule.Type.UNKNOWN);
             return rule;
         }
@@ -97,9 +95,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
             return rule;
         }
 
-        rule.setTarget(prue);
-        rule.setScope(prue.contains(SLASH) ? Rule.Scope.PATH : Rule.Scope.DOMAIN);
-        rule.setType(prue.contains(ASTERISK) ? Rule.Type.WILDCARD : Rule.Type.UNKNOWN);
+        rule.setType(Rule.Type.UNKNOWN);
         return rule;
     }
 
@@ -132,6 +128,13 @@ public final class EasylistHandler extends Handler implements InitializingBean {
             return builder.toString();
         }
 
+    }
+
+    @Override
+    public String commented(String value) {
+        return Util.splitIgnoreBlank(value, LF).stream()
+                .map(e -> EXCLAMATION + WHITESPACE + e.trim())
+                .collect(Collectors.joining(CRLF));
     }
 
     @Override

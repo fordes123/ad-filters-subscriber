@@ -47,6 +47,15 @@ public class Util {
         return EMPTY;
     }
 
+    public static String subBetween(String content, String start, String end) {
+        int startIndex = content.indexOf(start);
+        int endIndex = content.lastIndexOf(end);
+        if (startIndex > 0 && endIndex > 0) {
+            return content.substring(startIndex + start.length(), endIndex);
+        }
+        return EMPTY;
+    }
+
     public static List<String> splitIgnoreBlank(String content, String flag) {
         return Arrays.stream(content.split(flag))
                 .filter(e -> !e.isBlank())

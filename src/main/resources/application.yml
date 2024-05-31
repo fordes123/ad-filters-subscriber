@@ -35,8 +35,7 @@ application:
     #文件头配置，将自动作为注释添加至每个规则文件开始
     #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)
     file_header: |
-      ADFS Adblock List
-      Title: ${name}
+      ADFS AdBlock ${type}
       Last Modified: ${date}
       Homepage: https://github.com/fordes123/ad-filters-subscriber/
 

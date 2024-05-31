@@ -1,7 +1,6 @@
 package org.fordes.adfs.config;
 
 import lombok.Data;
-import org.apache.logging.log4j.util.Strings;
 import org.fordes.adfs.enums.HandleType;
 import org.fordes.adfs.enums.RuleSet;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -43,9 +42,9 @@ public class InputProperties {
     public record Prop(String name, RuleSet type, String path) {
 
         public Prop(String name, RuleSet type, String path) {
+            this.path = Optional.ofNullable(path).orElseThrow(() -> new IllegalArgumentException("application.rule.path is required")).trim();
             this.type = Optional.ofNullable(type).orElse(RuleSet.EASYLIST);
-            this.name = Optional.ofNullable(name).orElse(Strings.EMPTY).trim();
-            this.path = Optional.ofNullable(path).orElse(Strings.EMPTY).trim();
+            this.name = Optional.ofNullable(name).orElse(path).trim();
         }
 
         @Override

@@ -22,6 +22,11 @@ public final class DnsmasqHandler extends Handler implements InitializingBean {
     }
 
     @Override
+    public String commented(String value) {
+        return "";
+    }
+
+    @Override
     public void afterPropertiesSet() {
         this.register(RuleSet.DNSMASQ, this);
     }

@@ -12,6 +12,8 @@ public class Constants {
     public static final String HEADER_DATE = "${date}";
     public static final String HEADER_NAME = "${name}";
     public static final String HEADER_TOTAL = "${total}";
+    public static final String HEADER_TYPE = "${type}";
+    public static final String HEADER_DESC = "${desc}";
 
     public static final char ASTERISK_C = '*';
     public static final char QUESTION_MARK_C = '?';
@@ -37,8 +39,16 @@ public class Constants {
     public static final String A = "a";
     public static final String CARET = "^";
     public static final String WHITESPACE = " ";
+    public static final String CR = "\r";
+    public static final String LF = "\n";
+    public static final String CRLF = CR + LF;
+    public static final String QUOTE = "\"";
+    public static final String SINGLE_QUOTE = "'";
+    public static final String ADD = "+";
+    public static final String COLON = ":";
 
     public static final String ALLOW_PREFIX = "@@||";
     public static final String IMPORTANT = "$important";
     public static final String TAB = "\t";
+    public static final String PAYLOAD = "payload";
 }

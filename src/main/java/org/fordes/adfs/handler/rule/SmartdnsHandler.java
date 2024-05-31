@@ -22,6 +22,11 @@ public final class SmartdnsHandler extends Handler implements InitializingBean {
     }
 
     @Override
+    public String commented(String value) {
+        return "";
+    }
+
+    @Override
     public void afterPropertiesSet() {
         this.register(RuleSet.SMARTDNS, this);
     }

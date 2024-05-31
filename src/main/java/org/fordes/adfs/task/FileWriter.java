@@ -85,43 +85,66 @@ public class FileWriter {
         }
 
         //消费阻塞队列
-        fileQueueMap.forEach((fileName, queue) ->
-                consumer.execute(() -> {
+        output.getFiles().forEach(item -> {
 
-                    try (BufferedWriter writer = Files.newBufferedWriter(Path.of(dir + FILE_SEPARATOR + fileName),
-                            StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING,
-                            StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            BlockingQueue<String> queue = fileQueueMap.get(item.name());
+            Handler handler = Handler.getHandler(item.type());
+            String fileName = item.name();
 
-                        // 写入文件头
-                        if (StringUtils.hasText(output.getFileHeader())) {
-                            String header = output.getFileHeader()
-                                    .replace(HEADER_DATE, LocalDateTime.now()
-                                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                                    .replace(HEADER_NAME, fileName);
-                            writer.write(header, 0, header.length());
-                            writer.newLine();
-                        }
+            consumer.execute(() -> {
 
-                        long total = 0;
-                        while (!stopFlag || !queue.isEmpty()) {
-                            String line = queue.poll();
-                            if (line != null) {
-                                writer.write(line);
-                                total++;
-                                writer.newLine();
-                            } else {
-                                Util.sleep(50);
-                            }
-                        }
+                try (BufferedWriter writer = Files.newBufferedWriter(Path.of(dir + FILE_SEPARATOR + fileName),
+                        StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING,
+                        StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
 
-                        writer.flush();
-                        log.info("file: {}, total => {}", fileName, total);
-                    } catch (Exception e) {
-                        log.error("file writer error, fileName: {}", fileName, e);
-                        publisher.publishEvent(new ExitEvent(this));
+                    // 写入文件头
+                    if (StringUtils.hasText(output.getFileHeader())) {
+                        String header = handler.commented(output.getFileHeader()
+                                .replace(HEADER_DATE, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
+                                .replace(HEADER_NAME, item.name())
+                                .replace(HEADER_DESC, item.desc())
+                                .replace(HEADER_TYPE, item.type().name().toLowerCase()));
+                        writer.write(header, 0, header.length());
+                        writer.newLine();
                     }
 
-                }));
+                    //写入格式头
+                    String head = handler.headFormat();
+                    if (StringUtils.hasText(head)) {
+                        writer.write(head);
+                        writer.newLine();
+                    }
+
+                    long total = 0;
+                    while (!stopFlag || !queue.isEmpty()) {
+                        String line = queue.poll();
+                        if (line != null) {
+                            writer.write(line);
+                            total++;
+                            writer.newLine();
+                        } else {
+                            Util.sleep(50);
+                        }
+                    }
+
+                    //写入格式尾
+                    String tail = handler.tailFormat();
+                    if (StringUtils.hasText(tail)) {
+                        writer.write(tail);
+                        writer.newLine();
+                    }
+
+                    writer.flush();
+                    log.info("file: {}, total => {}", fileName, total);
+                } catch (Exception e) {
+                    log.error("file writer error, fileName: {}", fileName, e);
+                    publisher.publishEvent(new ExitEvent(this));
+                }
+
+            });
+        });
+
+
     }
 
     @EventListener(classes = StopEvent.class)

@@ -1,7 +1,5 @@
 package org.fordes.adfs.config;
 
-import jakarta.annotation.Nonnull;
-import jakarta.annotation.Nullable;
 import lombok.Data;
 import org.fordes.adfs.constant.Constants;
 import org.fordes.adfs.enums.RuleSet;
@@ -26,7 +24,7 @@ public class OutputProperties {
     private String path;
     private Set<OutputFile> files;
 
-    public record OutputFile(@Nonnull String name, @Nonnull RuleSet type, @Nullable String desc) {
+    public record OutputFile(String name, RuleSet type, String desc) {
 
         public OutputFile(String name, RuleSet type, String desc) {
             this.name = Optional.ofNullable(name).filter(StringUtils::hasText).orElseThrow(() -> new IllegalArgumentException("application.output.files.name is required"));
