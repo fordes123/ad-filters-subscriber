@@ -42,7 +42,6 @@ public class FileWriter {
     private final ExecutorService consumer;
 
     protected Map<String, BlockingQueue<String>> fileQueueMap;
-    //    protected Map<RuleSet, Set<String>> typeFileMap = Map.of();
     private static Boolean stopFlag = null;
 
     @Autowired
@@ -54,7 +53,6 @@ public class FileWriter {
         Optional.ofNullable(output)
                 .filter(e -> !e.isEmpty())
                 .ifPresentOrElse(opt -> {
-//                    this.typeFileMap = new HashMap<>(opt.getFiles().size());
                     this.fileQueueMap = opt.getFiles()
                             .stream()
                             .map(e -> {
