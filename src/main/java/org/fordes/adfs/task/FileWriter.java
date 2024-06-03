@@ -171,20 +171,23 @@ public class FileWriter {
     public void put(Rule rule) {
         Optional.ofNullable(rule).ifPresent(r -> {
 
-            output.getFiles().forEach(e -> {
-                BlockingQueue<String> queue = fileQueueMap.get(e.name());
-                Optional.ofNullable(Handler.getHandler(e.type()).format(r))
-                        .filter(s -> !s.isEmpty())
-                        .ifPresent(line -> {
-                            boolean flag = false;
-                            while (!flag) {
-                                flag = queue.offer(line);
-                                if (!flag) {
-                                    Util.sleep(50);
-                                }
-                            }
-                        });
-            });
+            output.getFiles()
+                    .stream().filter(e -> e.filter().contains(rule.getType()))
+                    .forEach(e -> {
+
+                        BlockingQueue<String> queue = fileQueueMap.get(e.name());
+                        Optional.ofNullable(Handler.getHandler(e.type()).format(r))
+                                .filter(s -> !s.isEmpty())
+                                .ifPresent(line -> {
+                                    boolean flag = false;
+                                    while (!flag) {
+                                        flag = queue.offer(line);
+                                        if (!flag) {
+                                            Util.sleep(50);
+                                        }
+                                    }
+                                });
+                    });
         });
     }
 }

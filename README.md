@@ -31,7 +31,7 @@
 #### 支持的规则格式
 - [x] easylist
 - [ ] dnsmasq
-- [ ] clash
+- [x] clash
 - [ ] smartdns
 - [x] hosts
 
@@ -71,6 +71,10 @@ application:
       - name: easylist.txt     #必要参数: 文件名
         type: EASYLIST         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
         desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
+        filter:                #可选参数: 包含规则的类型，默认全选
+          - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts
+          - wildcard           #通配规则，仅使用通配符
+          - unknown            #其他规则，如使用了正则、高级修饰符号等，这表示目前无法支持
 ```
 
 ---
