@@ -38,8 +38,8 @@ public class Util {
 
     public static String subAfter(String content, String flag, boolean isLast) {
         int index = isLast? content.lastIndexOf(flag) : content.indexOf(flag);
-        if (index > 0) {
-            return content.substring(index + 1);
+        if (index >= 0) {
+            return content.substring(index + flag.length());
         }
         return EMPTY;
     }
@@ -47,7 +47,7 @@ public class Util {
     public static String subBetween(String content, String start, String end) {
         int startIndex = content.indexOf(start);
         int endIndex = content.lastIndexOf(end);
-        if (startIndex > 0 && endIndex > 0) {
+        if (startIndex >= 0 && endIndex > 0 && startIndex < endIndex) {
             return content.substring(startIndex + start.length(), endIndex);
         }
         return EMPTY;

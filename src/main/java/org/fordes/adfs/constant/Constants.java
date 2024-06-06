@@ -51,4 +51,7 @@ public class Constants {
     public static final String IMPORTANT = "$important";
     public static final String TAB = "\t";
     public static final String PAYLOAD = "payload";
+
+    public static final String DNSMASQ_HEADER = "address=/";
+    public static final String SMARTDNS_HEADER = "address /";
 }

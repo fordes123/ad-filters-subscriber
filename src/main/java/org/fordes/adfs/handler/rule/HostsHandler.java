@@ -55,6 +55,11 @@ public final class HostsHandler extends Handler implements InitializingBean {
     }
 
     @Override
+    public boolean isComment(String line) {
+        return line.startsWith(HASH);
+    }
+
+    @Override
     public void afterPropertiesSet() {
         this.register(RuleSet.HOSTS, this);
     }

@@ -30,9 +30,9 @@
 > ⚠️ 新版不再兼容原配置格式，迁移前务必注意
 #### 支持的规则格式
 - [x] easylist
-- [ ] dnsmasq
+- [x] dnsmasq
 - [x] clash
-- [ ] smartdns
+- [x] smartdns
 - [x] hosts
 
 #### 注意事项
