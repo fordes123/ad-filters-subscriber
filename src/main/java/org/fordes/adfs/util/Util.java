@@ -131,9 +131,9 @@ public class Util {
      */
     public static boolean equalsAny(String str, String... values) {
         if (!StringUtils.hasLength(str) || ObjectUtils.isEmpty(values)) {
-            return Arrays.asList(values).contains(str);
+            return false;
         }
-        return false;
+        return Arrays.asList(values).contains(str);
     }
 
     /**
