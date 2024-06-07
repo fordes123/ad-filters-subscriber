@@ -1,7 +1,10 @@
 package org.fordes.adfs.util;
 
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-import org.fordes.adfs.constant.RegConstants;
+import org.springframework.util.ObjectUtils;
+import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
@@ -16,58 +19,130 @@ import static org.fordes.adfs.constant.RegConstants.*;
 @Slf4j
 public class Util {
 
-    public static boolean startWithAny(String content, String... prefix) {
-        return Arrays.stream(prefix).anyMatch(content::startsWith);
+    /**
+     * 给定字符串是否以特定前缀开始
+     *
+     * @param str      给定字符串
+     * @param prefixes 前缀
+     * @return 给定字符串是否以特定前缀开始
+     */
+    public static boolean startWithAny(String str, String... prefixes) {
+        if (!StringUtils.hasText(str) || ObjectUtils.isEmpty(prefixes)) {
+            return false;
+        }
+        return Arrays.stream(prefixes).anyMatch(str::startsWith);
     }
 
-    public static boolean startWithAll(String content, String... prefix) {
-        return Arrays.stream(prefix).allMatch(content::startsWith);
+    /**
+     * 给定字符串是否以特定字符串开始和结束
+     *
+     * @param str   给定字符串
+     * @param start 开始字符串
+     * @param end   结束字符串
+     * @return 给定字符串是否以特定字符串开始和结束
+     */
+    public static boolean between(String str, String start, String end) {
+        if (StringUtils.hasLength(str) && StringUtils.hasLength(start) && StringUtils.hasLength(end)) {
+            return str.startsWith(start) && str.endsWith(end);
+        }
+        return false;
     }
 
-    public static boolean between(String content, String start, String end) {
-        return content.startsWith(start) && content.endsWith(end);
-    }
-
-    public static String subBefore(String content, String flag, boolean isLast) {
-        int index = isLast? content.lastIndexOf(flag) : content.indexOf(flag);
-        if (index > 0) {
-            return content.substring(0, index);
+    /**
+     * 截取分隔字符串之前的字符串，不包括分隔字符串<br/>
+     * 截取不到时返回空串
+     *
+     * @param str    被截取的字符串
+     * @param flag   分隔字符串
+     * @param isLast 是否是最后一个
+     * @return 分隔字符串之前的字符串
+     */
+    public static String subBefore(String str, String flag, boolean isLast) {
+        if (StringUtils.hasLength(str) && StringUtils.hasLength(flag)) {
+            int index = isLast ? str.lastIndexOf(flag) : str.indexOf(flag);
+            if (index >= 0) {
+                return str.substring(0, index);
+            }
         }
         return EMPTY;
     }
 
+    /**
+     * 截取分隔字符串之后的字符串，不包括分隔字符串<br/>
+     * 截取不到时返回空串
+     *
+     * @param content 被截取的字符串
+     * @param flag    分隔字符串
+     * @param isLast  是否是最后一个
+     * @return 分隔字符串之后的字符串
+     */
     public static String subAfter(String content, String flag, boolean isLast) {
-        int index = isLast? content.lastIndexOf(flag) : content.indexOf(flag);
-        if (index >= 0) {
-            return content.substring(index + flag.length());
+        if (StringUtils.hasLength(content) && StringUtils.hasLength(flag)) {
+            int index = isLast ? content.lastIndexOf(flag) : content.indexOf(flag);
+            if (index >= 0) {
+                return content.substring(index + flag.length());
+            }
         }
         return EMPTY;
     }
 
+    /**
+     * 截取分隔字符串之间的字符串，不包括分隔字符串<br/>
+     * 截取不到时返回空串
+     *
+     * @param content 被截取的字符串
+     * @param start   开始分隔字符串
+     * @param end     结束分隔字符串
+     * @return 分隔字符串之间的字符串
+     */
     public static String subBetween(String content, String start, String end) {
-        int startIndex = content.indexOf(start);
-        int endIndex = content.lastIndexOf(end);
-        if (startIndex >= 0 && endIndex > 0 && startIndex < endIndex) {
-            return content.substring(startIndex + start.length(), endIndex);
+        if (StringUtils.hasLength(content) && StringUtils.hasLength(start) && StringUtils.hasLength(end)) {
+            int startIndex = content.indexOf(start);
+            int endIndex = content.lastIndexOf(end);
+            if (startIndex >= 0 && endIndex > 0 && startIndex < endIndex) {
+                return content.substring(startIndex + start.length(), endIndex);
+            }
         }
         return EMPTY;
     }
 
-    public static List<String> splitIgnoreBlank(String content, String flag) {
-        return Arrays.stream(content.split(flag))
+    /**
+     * 切分字符串并移除空项
+     *
+     * @param str  待切分字符串
+     * @param flag 分隔符
+     * @return 切分后的字符串
+     */
+    public static List<String> splitIgnoreBlank(String str, String flag) {
+        if (!StringUtils.hasLength(str) || !StringUtils.hasLength(flag)) {
+            return List.of();
+        }
+        return Arrays.stream(str.split(flag))
                 .filter(e -> !e.isBlank())
                 .toList();
     }
 
-    public static boolean equalsAny(String content, String... values) {
-        return Arrays.asList(values).contains(content);
+    /**
+     * 给定字符串是等于任一字符串
+     *
+     * @param str    给定字符串
+     * @param values 任意字符串
+     * @return 给定字符串是等于任一字符串
+     */
+    public static boolean equalsAny(String str, String... values) {
+        if (!StringUtils.hasLength(str) || ObjectUtils.isEmpty(values)) {
+            return Arrays.asList(values).contains(str);
+        }
+        return false;
     }
 
-    public static boolean equalsAnyIgnoreCase(String content, String... values) {
-        return Arrays.stream(values).anyMatch(content::equalsIgnoreCase);
-    }
-
-    public static Map.Entry<String, String> applyIfHosts(String content) {
+    /**
+     * 解析hosts规则，如不是则返回null
+     *
+     * @param content 待解析字符串
+     * @return {@link Map.Entry} key:ip, value:域名
+     */
+    public static @Nullable Map.Entry<String, String> parseHosts(String content) {
         List<String> list = splitIgnoreBlank(content, WHITESPACE);
         if (list.size() == 2) {
             String ip = list.get(0).trim();
@@ -80,6 +155,11 @@ public class Util {
         return null;
     }
 
+    /**
+     * 休眠线程，忽略中断异常
+     *
+     * @param millis 休眠时间，毫秒
+     */
     public static void sleep(long millis) {
         if (millis > 0L) {
             try {
@@ -89,9 +169,15 @@ public class Util {
         }
     }
 
-    public static String normalizePath(String path) {
-        boolean isAbsPath = '/' == path.charAt(0) ||
-                RegConstants.PATTERN_PATH_ABSOLUTE.matcher(path).matches();
+    /**
+     * 转换相对路径为绝对路径
+     *
+     * @param path 路径
+     * @return 规范化后的路径
+     */
+    public static String normalizePath(@Nonnull String path) {
+
+        boolean isAbsPath = '/' == path.charAt(0) || PATTERN_PATH_ABSOLUTE.matcher(path).matches();
 
         if (!isAbsPath) {
             if (path.startsWith(DOT)) {

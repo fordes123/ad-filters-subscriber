@@ -64,7 +64,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         String prue = line.substring(startIndex, endIndex);
 
         //判断是否是host
-        Map.Entry<String, String> entry = Util.applyIfHosts(prue);
+        Map.Entry<String, String> entry = Util.parseHosts(prue);
         if (entry != null) {
             rule.setDest(entry.getKey());
             rule.setTarget(entry.getValue());

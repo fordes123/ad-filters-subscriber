@@ -78,9 +78,7 @@ public final class ClashHandler extends Handler implements InitializingBean {
                 return rule.getOrigin();
             }
             return null;
-        } else if (rule.getMode() == Rule.Mode.DENY &&
-//                rule.getType() == Rule.Type.BASIC &&
-                rule.getScope() == Rule.Scope.DOMAIN) {
+        } else if (rule.getMode() == Rule.Mode.DENY && rule.getScope() == Rule.Scope.DOMAIN) {
             StringBuilder builder = new StringBuilder();
             builder.append(WHITESPACE).append(WHITESPACE).append(DASH).append(WHITESPACE).append(QUOTE);
 
