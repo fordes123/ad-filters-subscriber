@@ -113,9 +113,9 @@ public final class EasylistHandler extends Handler implements InitializingBean {
             } else if (rule.getMode() == Rule.Mode.ALLOW) {
                 builder.append(ALLOW_PREFIX);
             } else {
-                return builder.append(rule.getTarget())
-                        .append(EMPTY)
-                        .append(rule.getDest()).toString();
+                return builder.append(rule.getDest())
+                        .append(TAB)
+                        .append(rule.getTarget()).toString();
             }
             builder.append(rule.getTarget());
             Set<Rule.Control> controls = Optional.ofNullable(rule.getControls()).orElse(Set.of());
