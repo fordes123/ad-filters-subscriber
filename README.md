@@ -23,7 +23,7 @@
   </h4>
 </div>
 
-<br/>
+[English](./README_en.md) | 中文
 <h2 id="a">📔 项目说明</h2>
 
 本项目旨在聚合不同来源、不同格式的广告过滤规则，自由的进行转换和整合。
@@ -36,10 +36,9 @@
 - [x] hosts
 
 #### 注意事项
-1. 仅支持基本规则转换，即域名、通配域名构成的规则，对形如 `||example.org^$popup` 等规则无法转换(合并、去重不受影响)
-2. 接受不可避免的缩限，如 `||example.org^` 将拦截 example.org 及其所有子域，但将其转换为 hosts 格式时，将无法匹配子域名。
+1. 仅支持基本规则转换，即域名、通配域名构成的规则，对形如 `||example.org^$popup` 等规则无法转换(合并、去重不受影响) 
+2. 接受不可避免的缩限，如 `||example.org^` 将拦截 example.org 及其所有子域，但将其转换为 hosts 格式时，将无法匹配子域名。 
 
-<br/>
 <h2 id="b">🛠️ 快速开始</h2>
 
 ### 示例配置
@@ -111,7 +110,6 @@ mvn spring-boot:run
 此时选择 **Sync fork** 再选择 **Update branch** 即可同步更新.  
 (如曾修改过源代码，那么合并可能存在冲突，请谨慎处理)
 
-<br/>
 <h2 id="c">🎯 规则订阅</h2>
 
 **⚠ 本仓库不再提供规则订阅，我们更推荐 fork 本项目自行构建规则集.**
@@ -120,12 +118,11 @@ mvn spring-boot:run
 <details>
 <summary>点击查看</summary>
 <ul>
+    <br/>
     <li><a href="https://github.com/xndeye/adblock_list/">xndeye/adblock_list</a></li>
-    <p>欢迎提交 issues 或 pr 留下你的仓库地址~</p>
 </ul>
 </details>
 
-<br/>
 <h2 id="d">💬 问题反馈</h2>
 
 - 👉 [issues](https://github.com/fordes123/ad-filters-subscriber/issues)
