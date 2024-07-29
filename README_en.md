@@ -46,6 +46,7 @@ conversion and integration.
    such as `||example.org^$popup` cannot be converted (merging and deduplication are not affected). 
 2. Accept unavoidable limitations. For example, `||example.org^` will block example.org and all its subdomains, but when
    converted to hosts format, it will not match subdomains. 
+3. Rule validity check is based on domain resolution, so it only supports basic rules.
 
 <h2 id="b">🛠️ Quick Start</h2>
 

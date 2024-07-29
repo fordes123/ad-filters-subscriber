@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.fordes.adfs.config.Config;
 import org.fordes.adfs.config.InputProperties;
 import org.fordes.adfs.enums.HandleType;
+import org.fordes.adfs.handler.dns.DnsResolver;
 import org.fordes.adfs.handler.rule.Handler;
 import org.fordes.adfs.model.Rule;
 import org.fordes.adfs.task.FileWriter;
@@ -17,7 +18,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -33,6 +33,7 @@ public abstract class RuleHandler implements InitializingBean {
     protected final BloomFilter<Rule> filter;
     protected FileWriter writer;
     protected Config config;
+    protected DnsResolver dnsResolver;
     protected static final Map<HandleType, RuleHandler> handlerMap = new HashMap<>(HandleType.values().length);
 
     protected final void register(HandleType type, RuleHandler handler) {
@@ -58,7 +59,6 @@ public abstract class RuleHandler implements InitializingBean {
                             return Boolean.TRUE;
                         })
                         .map(e -> Handler.getHandler(prop.type()).parse(e))
-                        .filter(Objects::nonNull)
                         .filter(e -> Optional.of(!filter.contains(e))
                                 .filter(t -> t)
                                 .orElseGet(() -> {
@@ -66,6 +66,9 @@ public abstract class RuleHandler implements InitializingBean {
                                     repeat.incrementAndGet();
                                     return Boolean.FALSE;
                                 }))
+
+                        //域名检测
+                        .filter(e -> dnsResolver.apply(e))
                         //写入阻塞队列
                         .ifPresent(e -> {
 

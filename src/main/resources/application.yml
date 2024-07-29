@@ -14,6 +14,12 @@ application:
     fault_tolerance: 0.001 #容错率
     warn_limit: 6 #警告阈值, 原始规则长度小于该值时会输出警告日志
 
+    # 域名检测，启用时将进行解析以验证域名有效性
+    # 注意: 开启此功能可能导致处理时间大幅延长
+    domain-detect:
+      enable: false
+      timeout: 10
+
   # 规则源配置，remote为远程规则，local为本地规则，支持多个规则源
   rule:
     #远程订阅规则 （！使用前请删除下方示例配置, 注意缩进）
