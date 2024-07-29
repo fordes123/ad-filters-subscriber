@@ -66,8 +66,6 @@ public final class ClashHandler extends Handler implements InitializingBean {
         if (rule.getType() == null) {
             rule.setType(Rule.Type.UNKNOWN);
         }
-
-        log.error(rule.toString());
         return rule;
     }
 
