@@ -42,9 +42,9 @@ public class InputProperties {
     public record Prop(String name, RuleSet type, String path) {
 
         public Prop(String name, RuleSet type, String path) {
-            this.path = Optional.ofNullable(path).orElseThrow(() -> new IllegalArgumentException("application.rule.path is required")).trim();
+            this.path = Optional.ofNullable(path).filter(e -> !e.isBlank()).orElseThrow(() -> new IllegalArgumentException("application.rule.path is required")).trim();
             this.type = Optional.ofNullable(type).orElse(RuleSet.EASYLIST);
-            this.name = Optional.ofNullable(name).orElse(path).trim();
+            this.name = Optional.ofNullable(name).filter(e -> !e.isBlank()).orElse(path).trim();
         }
 
         @Override

@@ -5,25 +5,25 @@ logging:
 application:
   rule:
     remote:
-      - name: AdGuard 基础过滤器
-        path: https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_2_Base/filter.txt
-        type: easylist
+#      - name: AdGuard 基础过滤器
+#        path: https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_2_Base/filter.txt
+#        type: easylist
 
-      - name: Loyalsoldier/clash-rules 广告域名列表
-        path: https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt
-        type: clash
-
+#      - name: Loyalsoldier/clash-rules 广告域名列表
+#        path: https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt
+#        type: clash
+#
       - name: 1Hosts mini
         path: https://raw.githubusercontent.com/badmojr/1Hosts/master/mini/hosts.txt
         type: hosts
-
-      - name: anti-ad smartdns
-        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-smartdns.conf
-        type: smartdns
-
-      - name:
-        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/adblock-for-dnsmasq.conf
-        type: dnsmasq
+#
+#      - name: anti-ad smartdns
+#        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-smartdns.conf
+#        type: smartdns
+#
+#      - name:
+#        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/adblock-for-dnsmasq.conf
+#        type: dnsmasq
 
   output:
     path: rule

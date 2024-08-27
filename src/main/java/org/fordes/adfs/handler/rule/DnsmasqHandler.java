@@ -33,8 +33,7 @@ public final class DnsmasqHandler extends Handler implements InitializingBean {
             rule.setDest(ip);
             rule.setScope(Rule.Scope.DOMAIN);
             rule.setType(Rule.Type.BASIC);
-            rule.setMode(ip == null || Util.equalsAny(ip, LOCAL_V4, LOCAL_V6) ?
-                    Rule.Mode.DENY : Rule.Mode.REWRITE);
+            rule.setMode((ip == null || LOCAL_IP.contains(ip)) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
             return rule;
         }
         return null;
