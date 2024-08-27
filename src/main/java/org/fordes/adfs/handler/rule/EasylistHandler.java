@@ -7,12 +7,12 @@ import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
 import static org.fordes.adfs.constant.RegConstants.PATTERN_DOMAIN;
-import static org.fordes.adfs.constant.RegConstants.PATTERN_IP;
 
 /**
  * @author fordes123 on 2024/5/27
@@ -26,69 +26,55 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         Rule rule = new Rule();
         rule.setOrigin(line);
         rule.setSource(RuleSet.EASYLIST);
+        rule.setMode(Rule.Mode.DENY);
 
-        if (line.endsWith(IMPORTANT)) {
-            line = line.substring(0, line.length() - IMPORTANT.length());
-            rule.setControls(new HashSet<>() {{
-                add(Rule.Control.IMPORTANT);
-            }});
-        }
-
-        //不处理修饰规则
-        if (line.contains(DOLLAR) || (line.contains(CARET) && !line.endsWith(CARET))) {
-            rule.setType(Rule.Type.UNKNOWN);
-            return rule;
-        }
-
-        //解析规则控制符
-        int startIndex = 0, endIndex = line.length();
-        if (line.startsWith(ALLOW_PREFIX)) {
-            startIndex = ALLOW_PREFIX.length();
+        if (line.startsWith(DOUBLE_AT)) {
             rule.setMode(Rule.Mode.ALLOW);
-        } else {
-            if (line.startsWith(OR)) {
-                startIndex = OR.length();
+            line = line.substring(2);
+        }
+
+        int _head = 0;
+        if (line.startsWith(OR)) {
+            _head = OR.length();
+            rule.getControls().add(Rule.Control.OVERLAY);
+        }
+
+
+        //修饰部分
+        int _tail = line.indexOf(CARET);
+        if (_tail > 0) {
+            String modify = line.substring(_tail + 1);
+            if (!modify.isEmpty()) {
+                modify = modify.startsWith(DOLLAR) ? modify.substring(1) : modify;
+                String[] array = modify.split(COMMA);
+                if (!Arrays.stream(array).allMatch(e -> IMPORTANT.equals(e) || DOMAIN.equals(e))) {
+                    rule.setType(Rule.Type.UNKNOWN);
+                    return rule;
+                }
+
+                for (String s : array) {
+                    if (s.equals(IMPORTANT)) {
+                        rule.getControls().add(Rule.Control.IMPORTANT);
+                    }
+
+                    if (s.startsWith(DOMAIN)) {
+                        rule.setDest(Util.subAfter(s, DOMAIN + EQUAL, true));
+                    }
+                }
             }
-            rule.setMode(Rule.Mode.DENY);
+
         }
 
-        if (line.endsWith(CARET)) {
-            Set<Rule.Control> controls = Optional.ofNullable(rule.getControls())
-                    .filter(e -> !e.isEmpty()).orElse(new HashSet<>());
-            controls.add(Rule.Control.OVERLAY);
-            rule.setControls(controls);
 
-            endIndex = line.length() - CARET.length();
-        }
+        //内容部分
+        String content = line.substring(_head, _tail > 0 ? _tail : line.length());
 
-        String prue = line.substring(startIndex, endIndex);
-
-        //判断是否是host
-        Map.Entry<String, String> entry = Util.parseHosts(prue);
-        if (entry != null) {
-            rule.setDest(entry.getKey());
-            rule.setTarget(entry.getValue());
-            rule.setType(Rule.Type.BASIC);
-            rule.setScope(Rule.Scope.DOMAIN);
-            rule.setMode(Util.equalsAny(entry.getKey(), LOCAL_V4, LOCAL_V6) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
-            return rule;
-        }
-
-        //判断是否是ip
-        if (PATTERN_IP.matcher(prue).matches()) {
-            rule.setTarget(prue);
-            rule.setType(Rule.Type.BASIC);
-            rule.setScope(Rule.Scope.HOST);
-            rule.setMode(Rule.Mode.DENY);
-            return rule;
-        }
-
-        //判断是否是domain
-        String temp = prue.contains(ASTERISK) ? prue.replace(ASTERISK, EMPTY) : prue;
+        //判断是否为基本或通配规则
+        String temp = content.contains(ASTERISK) ? content.replace(ASTERISK, EMPTY) : content;
         if (PATTERN_DOMAIN.matcher(temp).matches()) {
-            rule.setType(prue.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
+            rule.setType(content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
             rule.setScope(Rule.Scope.DOMAIN);
-            rule.setTarget(prue);
+            rule.setTarget(content);
             if (Rule.Mode.DENY.equals(rule.getMode())) {
                 rule.setDest(LOCAL_V4);
             }
@@ -101,33 +87,48 @@ public final class EasylistHandler extends Handler implements InitializingBean {
 
     @Override
     public String format(Rule rule) {
-        if (Rule.Type.UNKNOWN == rule.getType()) {
-            if (RuleSet.EASYLIST == rule.getSource()) {
-                return rule.getOrigin();
-            }
-            return null;
-        } else {
+        if (Rule.Type.UNKNOWN != rule.getType() && Rule.Mode.REWRITE != rule.getMode()) {
+
             StringBuilder builder = new StringBuilder();
-            if (rule.getMode() == Rule.Mode.DENY) {
+            StringBuilder tail = new StringBuilder();
+            if (rule.getMode() == Rule.Mode.ALLOW) {
+                builder.append(DOUBLE_AT);
+            }
+
+            //匹配域名及其所有子域名
+            if (rule.getControls().contains(Rule.Control.OVERLAY)) {
                 builder.append(OR);
-            } else if (rule.getMode() == Rule.Mode.ALLOW) {
-                builder.append(ALLOW_PREFIX);
             } else {
-                return builder.append(rule.getDest())
-                        .append(TAB)
-                        .append(rule.getTarget()).toString();
+                if (rule.getType() == Rule.Type.BASIC) {
+                    tail.append(DOLLAR).append(DOMAIN).append(EQUAL)
+                            .append(Optional.ofNullable(rule.getDest())
+                                    .filter(e -> !e.isEmpty()).orElse(rule.getTarget()));
+                }
             }
+
+            //匹配目标
             builder.append(rule.getTarget());
-            Set<Rule.Control> controls = Optional.ofNullable(rule.getControls()).orElse(Set.of());
-            if (controls.contains(Rule.Control.OVERLAY)) {
-                builder.append(CARET);
+
+            //高优先级
+            if (rule.getControls().contains(Rule.Control.IMPORTANT)) {
+                if (tail.isEmpty()) {
+                    tail.append(DOLLAR);
+                }
+                tail.append(IMPORTANT);
             }
-            if (controls.contains(Rule.Control.IMPORTANT)) {
-                builder.append(IMPORTANT);
+
+            builder.append(CARET);
+            if (!tail.isEmpty()) {
+                builder.append(tail);
             }
             return builder.toString();
         }
 
+        //同源未知规则可直接写出
+        if (Rule.Type.UNKNOWN == rule.getType() && RuleSet.EASYLIST == rule.getSource()) {
+            return rule.getOrigin();
+        }
+        return null;
     }
 
     @Override
@@ -144,6 +145,6 @@ public final class EasylistHandler extends Handler implements InitializingBean {
 
     @Override
     public boolean isComment(String line) {
-        return Util.startWithAny(line, HASH, EXCLAMATION)  || Util.between(line, LEFT_BRACKETS, RIGHT_BRACKETS);
+        return Util.startWithAny(line, HASH, EXCLAMATION) || Util.between(line, LEFT_BRACKETS, RIGHT_BRACKETS);
     }
 }

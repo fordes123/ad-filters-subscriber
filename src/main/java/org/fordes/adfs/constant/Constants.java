@@ -1,26 +1,21 @@
 package org.fordes.adfs.constant;
 
 import java.io.File;
+import java.util.Set;
 
 public class Constants {
 
     public static final String ROOT_PATH = System.getProperty("user.dir");
     public static final String FILE_SEPARATOR = File.separator;
-    public static final String LOCAL_RULE_SUFFIX = ROOT_PATH + File.separator + "rule";
-    public static final String EMPTY = "";
-    public static final String DOT = ".";
+
     public static final String HEADER_DATE = "${date}";
     public static final String HEADER_NAME = "${name}";
     public static final String HEADER_TOTAL = "${total}";
     public static final String HEADER_TYPE = "${type}";
     public static final String HEADER_DESC = "${desc}";
 
-    public static final char ASTERISK_C = '*';
-    public static final char QUESTION_MARK_C = '?';
-    public static final char A_C = 'a';
-    public static final String LOCAL_V6 = "::1";
-    public static final String LOCALHOST = "localhost";
-    public static final String LOCAL_V4 = "127.0.0.1";
+    public static final String EMPTY = "";
+    public static final String DOT = ".";
     public static final String EXCLAMATION = "!";
     public static final String HASH = "#";
     public static final String AT = "@";
@@ -46,9 +41,17 @@ public class Constants {
     public static final String SINGLE_QUOTE = "'";
     public static final String ADD = "+";
     public static final String COLON = ":";
+    public static final String EQUAL = "=";
 
-    public static final String ALLOW_PREFIX = "@@||";
-    public static final String IMPORTANT = "$important";
+
+    public static final Set<String> LOCAL_IP = Set.of("0.0.0.0", "127.0.0.1", "::1");
+    public static final Set<String> LOCAL_DOMAIN = Set.of("localhost", "localhost.localdomain", "local", "ip6-localhost", "ip6-loopback");
+    public static final String LOCAL_V4 = "127.0.0.1";
+    public static final String LOCAL_V6 = "::1";
+    public static final String LOCALHOST = "localhost";
+    public static final String DOUBLE_AT = "@@";
+    public static final String IMPORTANT = "important";
+    public static final String DOMAIN = "domain";
     public static final String TAB = "\t";
     public static final String PAYLOAD = "payload";
 
