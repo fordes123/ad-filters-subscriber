@@ -108,7 +108,7 @@ public class Rule {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o instanceof  Rule rule) {
+        if (o instanceof Rule rule) {
             if (Type.UNKNOWN == this.type || Type.UNKNOWN == rule.getType()) {
                 return Objects.equals(this.origin, rule.origin);
             }
@@ -128,4 +128,18 @@ public class Rule {
         return Objects.hash(getTarget(), getMode(), getScope(), getType());
     }
 
+    @Override
+    public String toString() {
+        if (Type.UNKNOWN == this.type) {
+            return "Rule{" +
+                    "origin='" + origin + '\'' +
+                    '}';
+        }
+        return "Rule{" +
+                "target='" + target + '\'' +
+                ", mode=" + mode +
+                ", scope=" + scope +
+                ", type=" + type +
+                '}';
+    }
 }

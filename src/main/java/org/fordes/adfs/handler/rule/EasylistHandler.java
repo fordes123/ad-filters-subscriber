@@ -70,7 +70,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         String content = line.substring(_head, _tail > 0 ? _tail : line.length());
 
         //判断是否为基本或通配规则
-        String temp = content.contains(ASTERISK) ? content.replace(ASTERISK, EMPTY) : content;
+        String temp = content.replace(ASTERISK, A);
         if (PATTERN_DOMAIN.matcher(temp).matches()) {
             rule.setType(content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
             rule.setScope(Rule.Scope.DOMAIN);
