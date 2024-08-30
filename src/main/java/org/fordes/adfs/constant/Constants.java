@@ -47,6 +47,7 @@ public class Constants {
     public static final Set<String> LOCAL_IP = Set.of("0.0.0.0", "127.0.0.1", "::1");
     public static final Set<String> LOCAL_DOMAIN = Set.of("localhost", "localhost.localdomain", "local", "ip6-localhost", "ip6-loopback");
     public static final String LOCAL_V4 = "127.0.0.1";
+    public static final String UNKNOWN_IP = "0.0.0.0";
     public static final String LOCAL_V6 = "::1";
     public static final String LOCALHOST = "localhost";
     public static final String DOUBLE_AT = "@@";

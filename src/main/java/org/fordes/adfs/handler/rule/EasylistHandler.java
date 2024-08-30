@@ -78,7 +78,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
             rule.setScope(Rule.Scope.DOMAIN);
             rule.setTarget(origin);
             if (Rule.Mode.DENY.equals(rule.getMode())) {
-                rule.setDest(LOCAL_V4);
+                rule.setDest(UNKNOWN_IP);
             }
         }, e -> {
             Map.Entry<String, String> entry = Util.parseHosts(e);
@@ -86,7 +86,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
                 rule.setSource(RuleSet.HOSTS);
                 rule.setTarget(entry.getValue());
                 rule.setMode(LOCAL_IP.contains(entry.getKey()) && !LOCAL_DOMAIN.contains(entry.getValue()) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
-                rule.setDest(entry.getKey());
+                rule.setDest(Rule.Mode.DENY == rule.getMode() ? UNKNOWN_IP : entry.getKey());
                 rule.setScope(Rule.Scope.DOMAIN);
                 rule.setType(Rule.Type.BASIC);
             } else {
