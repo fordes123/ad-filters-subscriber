@@ -54,7 +54,7 @@ public final class SmartdnsHandler extends Handler implements InitializingBean {
 
             rule.setType(domain.startsWith(ASTERISK) ? Rule.Type.WILDCARD : Rule.Type.BASIC);
             rule.setTarget(domain);
-            rule.setDest(LOCAL_V4);
+            rule.setDest(UNKNOWN_IP);
             rule.setScope(Rule.Scope.DOMAIN);
             return rule;
         }

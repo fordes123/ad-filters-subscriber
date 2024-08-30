@@ -60,7 +60,7 @@ public final class ClashHandler extends Handler implements InitializingBean {
         }
 
         rule.setTarget(content);
-        rule.setDest(LOCAL_V4);
+        rule.setDest(UNKNOWN_IP);
         rule.setMode(Rule.Mode.DENY);
         rule.setScope(Rule.Scope.DOMAIN);
         if (rule.getType() == null) {
