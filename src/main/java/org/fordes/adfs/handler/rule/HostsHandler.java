@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
@@ -32,7 +33,7 @@ public final class HostsHandler extends Handler implements InitializingBean {
         rule.setOrigin(line);
         rule.setTarget(entry.getValue());
         rule.setMode(LOCAL_IP.contains(entry.getKey()) && !LOCAL_DOMAIN.contains(entry.getValue()) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
-        rule.setDest(Rule.Mode.DENY.equals(rule.getMode()) ? entry.getValue() :entry.getKey());
+        rule.setDest(entry.getKey());
         rule.setScope(Rule.Scope.DOMAIN);
         rule.setType(Rule.Type.BASIC);
         return rule;
@@ -43,7 +44,7 @@ public final class HostsHandler extends Handler implements InitializingBean {
         if (Rule.Scope.DOMAIN == rule.getScope() &&
                 Rule.Type.BASIC == rule.getType() &&
                 Rule.Mode.ALLOW != rule.getMode()) {
-            return rule.getDest() + TAB + rule.getTarget();
+            return Optional.ofNullable(rule.getDest()).orElse(LOCAL_V4) + TAB + rule.getTarget();
         }
         return null;
     }

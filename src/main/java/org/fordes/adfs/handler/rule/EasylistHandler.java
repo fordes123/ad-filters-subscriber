@@ -86,7 +86,7 @@ public final class EasylistHandler extends Handler implements InitializingBean {
                 rule.setSource(RuleSet.HOSTS);
                 rule.setTarget(entry.getValue());
                 rule.setMode(LOCAL_IP.contains(entry.getKey()) && !LOCAL_DOMAIN.contains(entry.getValue()) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
-                rule.setDest(Rule.Mode.DENY.equals(rule.getMode()) ? entry.getValue() : entry.getKey());
+                rule.setDest(entry.getKey());
                 rule.setScope(Rule.Scope.DOMAIN);
                 rule.setType(Rule.Type.BASIC);
             } else {
