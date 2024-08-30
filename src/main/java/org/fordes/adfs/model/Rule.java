@@ -28,11 +28,21 @@ public class Rule {
      * 规则控制参数
      */
     public enum Control {
-        // 最高优先级
+        /**
+         * 最高优先级
+         */
         IMPORTANT,
 
-        //覆盖子域名
+        /**
+         * 覆盖子域名
+         */
+
         OVERLAY,
+
+        /**
+         * 限定符，通常是 ^
+         */
+        QUALIFIER,
 
         ;
     }

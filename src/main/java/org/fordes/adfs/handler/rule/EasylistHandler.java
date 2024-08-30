@@ -8,11 +8,11 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
-import static org.fordes.adfs.constant.RegConstants.PATTERN_DOMAIN;
 
 /**
  * @author fordes123 on 2024/5/27
@@ -43,45 +43,56 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         //修饰部分
         int _tail = line.indexOf(CARET);
         if (_tail > 0) {
+            rule.getControls().add(Rule.Control.QUALIFIER);
+
             String modify = line.substring(_tail + 1);
             if (!modify.isEmpty()) {
                 modify = modify.startsWith(DOLLAR) ? modify.substring(1) : modify;
                 String[] array = modify.split(COMMA);
-                if (!Arrays.stream(array).allMatch(e -> IMPORTANT.equals(e) || DOMAIN.equals(e))) {
+                if (Arrays.stream(array).allMatch(IMPORTANT::equals)) {
+                    rule.getControls().add(Rule.Control.IMPORTANT);
+                } else {
                     rule.setType(Rule.Type.UNKNOWN);
                     return rule;
                 }
-
-                for (String s : array) {
-                    if (s.equals(IMPORTANT)) {
-                        rule.getControls().add(Rule.Control.IMPORTANT);
-                    }
-
-                    if (s.startsWith(DOMAIN)) {
-                        rule.setDest(Util.subAfter(s, DOMAIN + EQUAL, true));
-                    }
-                }
             }
-
+        } else if (line.endsWith(DOLLAR + IMPORTANT)) {
+            rule.getControls().add(Rule.Control.IMPORTANT);
+            _tail = line.length() - (DOLLAR.length() + IMPORTANT.length());
         }
 
 
         //内容部分
         String content = line.substring(_head, _tail > 0 ? _tail : line.length());
 
+        if (content.startsWith(SLASH) && content.endsWith(SLASH)) {
+            content = content.substring(1, content.length() - 1);
+            rule.setType(Rule.Type.UNKNOWN);
+        }
+
         //判断是否为基本或通配规则
-        String temp = content.replace(ASTERISK, A);
-        if (PATTERN_DOMAIN.matcher(temp).matches()) {
-            rule.setType(content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
+        Util.isBaseRule(content, (origin, e) -> {
+            if (rule.getType() == null) {
+                rule.setType(e);
+            }
             rule.setScope(Rule.Scope.DOMAIN);
-            rule.setTarget(content);
+            rule.setTarget(origin);
             if (Rule.Mode.DENY.equals(rule.getMode())) {
                 rule.setDest(LOCAL_V4);
             }
-            return rule;
-        }
-
-        rule.setType(Rule.Type.UNKNOWN);
+        }, e -> {
+            Map.Entry<String, String> entry = Util.parseHosts(e);
+            if (entry != null) {
+                rule.setSource(RuleSet.HOSTS);
+                rule.setTarget(entry.getValue());
+                rule.setMode(LOCAL_IP.contains(entry.getKey()) && !LOCAL_DOMAIN.contains(entry.getValue()) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
+                rule.setDest(Rule.Mode.DENY.equals(rule.getMode()) ? entry.getValue() : entry.getKey());
+                rule.setScope(Rule.Scope.DOMAIN);
+                rule.setType(Rule.Type.BASIC);
+            } else {
+                rule.setType(Rule.Type.UNKNOWN);
+            }
+        });
         return rule;
     }
 
@@ -90,37 +101,23 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         if (Rule.Type.UNKNOWN != rule.getType() && Rule.Mode.REWRITE != rule.getMode()) {
 
             StringBuilder builder = new StringBuilder();
-            StringBuilder tail = new StringBuilder();
-            if (rule.getMode() == Rule.Mode.ALLOW) {
-                builder.append(DOUBLE_AT);
-            }
+            Optional.of(rule.getMode())
+                    .filter(Rule.Mode.ALLOW::equals)
+                    .ifPresent(m -> builder.append(DOUBLE_AT));
 
-            //匹配域名及其所有子域名
-            if (rule.getControls().contains(Rule.Control.OVERLAY)) {
-                builder.append(OR);
-            } else {
-                if (rule.getType() == Rule.Type.BASIC) {
-                    tail.append(DOLLAR).append(DOMAIN).append(EQUAL)
-                            .append(Optional.ofNullable(rule.getDest())
-                                    .filter(e -> !e.isEmpty()).orElse(rule.getTarget()));
-                }
-            }
+            Optional.of(rule.getControls())
+                    .filter(e -> e.contains(Rule.Control.OVERLAY))
+                    .ifPresent(c -> builder.append(OR));
 
-            //匹配目标
             builder.append(rule.getTarget());
 
-            //高优先级
-            if (rule.getControls().contains(Rule.Control.IMPORTANT)) {
-                if (tail.isEmpty()) {
-                    tail.append(DOLLAR);
-                }
-                tail.append(IMPORTANT);
-            }
+            Optional.of(rule.getControls())
+                    .filter(e -> e.contains(Rule.Control.QUALIFIER))
+                    .ifPresent(c -> builder.append(CARET));
 
-            builder.append(CARET);
-            if (!tail.isEmpty()) {
-                builder.append(tail);
-            }
+            Optional.of(rule.getControls())
+                    .filter(e -> e.contains(Rule.Control.IMPORTANT))
+                    .ifPresent(c -> builder.append(DOLLAR).append(IMPORTANT));
             return builder.toString();
         }
 

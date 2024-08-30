@@ -3,12 +3,15 @@ package org.fordes.adfs.util;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.fordes.adfs.model.Rule;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import static org.fordes.adfs.constant.Constants.*;
 import static org.fordes.adfs.constant.RegConstants.*;
@@ -143,6 +146,9 @@ public class Util {
      * @return {@link Map.Entry} key:ip, value:域名
      */
     public static @Nullable Map.Entry<String, String> parseHosts(String content) {
+        if (content.contains(TAB)) {
+            content = content.replace(TAB, WHITESPACE);
+        }
         List<String> list = splitIgnoreBlank(content, WHITESPACE);
         if (list.size() == 2) {
             String ip = list.get(0).trim();
@@ -189,5 +195,29 @@ public class Util {
             path = ROOT_PATH + FILE_SEPARATOR + path;
         }
         return path;
+    }
+
+
+    public static void isBaseRule(String content, BiConsumer<String, Rule.Type> ifPresent, Consumer<String> orElse) {
+        String temp = content;
+        if (temp.contains(ASTERISK)) {
+            temp = content.replace(ASTERISK, A);
+        }
+
+        if (temp.startsWith(DOT)) {
+            temp = temp.substring(1);
+        }
+
+        if (temp.endsWith(DOT)) {
+            temp = temp.substring(0, temp.length() - 1);
+        }
+
+        if (PATTERN_DOMAIN.matcher(temp).matches()) {
+            ifPresent.accept(content, content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
+        } else if (DOMAIN_PART.matcher(temp).matches()) {
+            ifPresent.accept(content, Rule.Type.WILDCARD);
+        } else {
+            orElse.accept(content);
+        }
     }
 }
