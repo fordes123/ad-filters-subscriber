@@ -22,7 +22,7 @@ import java.util.Set;
 public class OutputProperties {
 
     private String fileHeader;
-    private String path;
+    private String path = "rule";
     private Set<OutputFile> files;
 
     public record OutputFile(String name, RuleSet type, Set<Rule.Type> filter, String desc) {
@@ -36,8 +36,9 @@ public class OutputProperties {
 
     }
 
+    @Deprecated
     public void setPath(String path) {
-        this.path = Optional.ofNullable(path).filter(StringUtils::hasText).orElse("rule");
+//        this.path = Optional.ofNullable(path).filter(StringUtils::hasText).orElse("rule");
     }
 
     public boolean isEmpty() {

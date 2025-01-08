@@ -66,7 +66,6 @@ application:
       Title: ${name}
       Last Modified: ${date}
       Homepage: https://github.com/fordes123/ad-filters-subscriber/
-    path: rule   #规则文件输出路径，相对路径默认为程序所在路径
     files:
       - name: easylist.txt     #必要参数: 文件名
         type: EASYLIST         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
@@ -78,7 +77,7 @@ application:
 ```
 
 ---
-本程序基于 `Java21` 编写，使用 `Maven` 进行构建，你可以参照示例配置，编辑 `src/main/resources/application.yml`
+本程序基于 `Java21` 编写，使用 `Maven` 进行构建，你可以参照[示例配置](./config/application-example.yaml)，编辑 `config/application.yaml`
 ，并通过以下任意一种方式快速开始：
 
 #### **本地调试**
@@ -94,22 +93,14 @@ mvn spring-boot:run
 
 - fork 本项目
 - 自定义规则订阅 (可选)
-    - 参照示例配置，修改配置文件: `src/main/resources/application.yml`
+    - 参照[示例配置](./config/application-example.yaml)，修改配置文件: `config/application.yaml`
 - 打开 `Github Action` 页面，选中左侧 `Update Filters` 授权 `Workflow` 定时执行(⚠ 重要步骤)
-- 点击 `Run workflow` 或等待自动执行。执行完成后相应规则生成在配置中指定的目录下
+- 点击 `Run workflow` 或等待自动执行。执行完成后规则将生成在 `release` 分支
 
 #### **Codespaces**
 
 - 登录 `Github`，点击本仓库右上角 `Code` 按钮，选择并创建新的 `Codespaces`
 - 等待 `Codespaces` 启动，即可直接对本项目进行调试
-
-### 如何更新
-
-当源代码存在更新时，(你的)仓库首页会出现如下图提示:
-<img src="./screen.png">
-
-此时选择 **Sync fork** 再选择 **Update branch** 即可同步更新.  
-(如曾修改过源代码，那么合并可能存在冲突，请谨慎处理)
 
 <h2 id="c">🎯 规则订阅</h2>
 
