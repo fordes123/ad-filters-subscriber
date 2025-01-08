@@ -74,7 +74,6 @@ application:
       Title: ${name}
       Last Modified: ${date}
       Homepage: https://github.com/fordes123/ad-filters-subscriber/
-    path: rule   # Output rule file path. Support absolute or relative path.
     files:
       - name: easylist.txt     # Required parameter: File name
         type: EASYLIST         # Required parameter: File type: easylist、dnsmasq、clash、smartdns、hosts
@@ -86,8 +85,8 @@ application:
 ```
 
 ---
-This program is written in `Java 21` and built using `Maven`. You can refer to the example configuration,
-edit `src/main/resources/application.yml`, and quickly get started using any of the following methods:
+This program is written in `Java 21` and built using `Maven`. You can refer to the [example configuration](./config/application-example.yaml),
+edit `config/application.yaml`, and quickly get started using any of the following methods:
 
 #### **Local Debugging**
 
@@ -102,7 +101,7 @@ mvn spring-boot:run
 
 - Fork this project
 - Customize rule subscriptions
-    - Refer to the example configuration and modify the configuration file: `src/main/resources/application.yml`
+    - Refer to the [example configuration](./config/application-example.yaml) and modify the configuration file: `config/application.yaml`
 - Open the GitHub Actions page, select Update Filters on the left side, and authorize the workflow for scheduled
   execution (⚠ important step)
 - Click Run workflow or wait for automatic execution. Once completed, the corresponding rules will be generated in the
@@ -114,15 +113,6 @@ mvn spring-boot:run
   new `Codespace`.
 - Wait for `Codespaces` to start, and you can directly debug this project.
 
-### How to Update
-
-When the source code is updated, your repository's home page will display a prompt like the one shown below:
-<img src="./screen.png">
-
-At this point, select **Sync fork** and then choose **Update branch** to sync the updates.  
-(If you have modified the source code, there may be merge conflicts. Please handle them carefully.)
-
-<br/>
 <h2 id="c">🎯 Rule Subscription</h2>
 
 > ⚠ This repository no longer provides rule subscriptions. We highly recommend forking this project to build your own
