@@ -17,6 +17,11 @@ application:
       enable: false
       timeout: 10
 
+    # 排除指定内容
+    # 在解析结束后，规则内容命中此列表将直接认定为无效
+    exclude:
+      - "www.example.org"
+
 
   # 规则源配置
   # remote为远程规则，local为本地规则，支持多个规则源
