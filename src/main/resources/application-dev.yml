@@ -36,6 +36,8 @@ application:
 
       - name: dns.txt
         type: easylist
+        file-header: |
+          Test
         filter:
           - basic
           - wildcard

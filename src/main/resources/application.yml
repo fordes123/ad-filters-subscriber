@@ -2,7 +2,7 @@ spring:
   application:
     name: ad-filters-subscriber
   profiles:
-    active: prod  #切换至 dev 即可输出调试信息
+    active: dev  #切换至 dev 即可输出调试信息
 
 logging:
   file:

@@ -17,6 +17,11 @@ application:
       enable: false
       timeout: 10
 
+    # 排除指定内容
+    # 在解析结束后，规则内容命中此列表将直接认定为无效
+    exclude:
+      - "www.example.org"
+
 
   # 规则源配置
   # remote为远程规则，local为本地规则，支持多个规则源
@@ -49,6 +54,7 @@ application:
     files:
       - name: easylist.txt     #必要参数: 文件名
         type: easylist         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
         desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
         filter:
           - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts

@@ -16,9 +16,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -45,6 +43,8 @@ public abstract class RuleHandler implements InitializingBean {
         AtomicLong repeat = new AtomicLong(0L);
         AtomicLong effective = new AtomicLong(0L);
 
+        var exclude = Optional.ofNullable(config.getExclude()).orElseGet(Set::of);
+
         try (InputStream is = getStream(prop.path());
              BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
             String line;
@@ -59,6 +59,24 @@ public abstract class RuleHandler implements InitializingBean {
                             return Boolean.TRUE;
                         })
                         .map(e -> Handler.getHandler(prop.type()).parse(e))
+                        .filter(e -> {
+
+                            return Optional.ofNullable(e).map(r -> {
+                                        return Optional.ofNullable(r.getTarget()).map(t -> {
+                                                    if (exclude.contains(t)) {
+                                                        log.info("exclude rule: {}", original);
+                                                        return false;
+                                                    }
+                                                    return true;
+                                                })
+                                                .orElse(true);
+                                    })
+                                    .orElseGet(() -> {
+                                        log.warn("parse fail: {}", original);
+                                        return false;
+                                    });
+                        })
+                        .filter(e -> e.getTarget() == null || !exclude.contains(e.getTarget()))
                         .filter(e -> Optional.of(!filter.contains(e))
                                 .filter(t -> t)
                                 .orElseGet(() -> {
