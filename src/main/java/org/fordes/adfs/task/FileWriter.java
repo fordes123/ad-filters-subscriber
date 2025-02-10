@@ -96,8 +96,9 @@ public class FileWriter {
                         StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
 
                     // 写入文件头
-                    if (StringUtils.hasText(output.getFileHeader())) {
-                        String header = handler.commented(output.getFileHeader()
+                    var fileHeader = Optional.ofNullable(item.fileHeader()).orElse(output.getFileHeader());
+                    if (StringUtils.hasText(fileHeader)) {
+                        String header = handler.commented(fileHeader
                                 .replace(HEADER_DATE, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
                                 .replace(HEADER_NAME, item.name())
                                 .replace(HEADER_DESC, item.desc())

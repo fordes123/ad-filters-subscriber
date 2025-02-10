@@ -25,13 +25,14 @@ public class OutputProperties {
     private String path = "rule";
     private Set<OutputFile> files;
 
-    public record OutputFile(String name, RuleSet type, Set<Rule.Type> filter, String desc) {
+    public record OutputFile(String name, RuleSet type, Set<Rule.Type> filter, String desc, String fileHeader) {
 
-        public OutputFile(String name, RuleSet type, Set<Rule.Type> filter, String desc) {
+        public OutputFile(String name, RuleSet type, Set<Rule.Type> filter, String desc, String fileHeader) {
             this.name = Optional.ofNullable(name).filter(StringUtils::hasText).orElseThrow(() -> new IllegalArgumentException("application.output.files.name is required"));
             this.type = Optional.ofNullable(type).orElseThrow(() -> new IllegalArgumentException("application.output.files.type is required"));
             this.desc = Optional.ofNullable(desc).filter(StringUtils::hasText).orElse(Constants.EMPTY);
             this.filter = Optional.ofNullable(filter).orElse(Set.of(Rule.Type.values()));
+            this.fileHeader = Optional.ofNullable(fileHeader).filter(StringUtils::hasText).orElse(null);
         }
 
     }
