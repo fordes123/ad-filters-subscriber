@@ -13,6 +13,7 @@ import org.fordes.adfs.util.BloomFilter;
 import org.springframework.beans.factory.InitializingBean;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
@@ -112,7 +113,7 @@ public abstract class RuleHandler implements InitializingBean {
         return handlerMap.get(type);
     }
 
-    protected abstract InputStream getStream(String path);
+    protected abstract InputStream getStream(String path) throws IOException;
 
     protected abstract Charset getCharset();
 }
