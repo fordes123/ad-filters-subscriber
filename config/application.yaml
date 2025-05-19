@@ -4,7 +4,7 @@
 application:
   config:
     domain-detect:
-      enable: true
+      enable: false
       timeout: 10
 
     exclude:
