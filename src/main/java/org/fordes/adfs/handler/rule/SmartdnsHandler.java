@@ -58,7 +58,7 @@ public final class SmartdnsHandler extends Handler implements InitializingBean {
             rule.setScope(Rule.Scope.DOMAIN);
             return rule;
         }
-        return null;
+        return Rule.EMPTY;
     }
 
     @Override

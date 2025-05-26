@@ -23,6 +23,7 @@ public class Rule {
     private Type type;
     private Set<Control> controls = new HashSet<>(Control.values().length, 1.0f);
 
+    public static final Rule EMPTY = new Rule();
 
     /**
      * 规则控制参数

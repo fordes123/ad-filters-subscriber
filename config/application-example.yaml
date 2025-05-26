@@ -14,8 +14,10 @@ application:
     # 域名检测，启用时将进行解析以验证域名有效性
     # 注意: 开启此功能可能导致处理时间大幅延长
     domain-detect:
-      enable: false
-      timeout: 10
+      enable: false   # 是否启用
+      timeout: 2000   # 查询超时（毫秒）
+      provider:       # 使用的 DNS 服务器，仅支持 IP，多个之间具备优先级
+        - 223.5.5.5
 
     # 排除指定内容
     # 在解析结束后，规则内容命中此列表将直接认定为无效

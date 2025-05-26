@@ -3,6 +3,12 @@ logging:
     org.fordes.adfs: info
 
 application:
+  config:
+    domain-detect:
+      enable: false
+      timeout: 2000
+      provider:
+        - 223.5.5.5
   rule:
     remote:
       - name: AdGuard 基础过滤器
@@ -13,8 +19,8 @@ application:
         path: https://raw.githubusercontent.com/Loyalsoldier/clash-rules/release/reject.txt
         type: clash
 
-      - name: 1Hosts mini
-        path: https://raw.githubusercontent.com/badmojr/1Hosts/master/mini/hosts.txt
+      - name: 1Hosts lite
+        path: https://o0.pages.dev/Lite/hosts.txt
         type: hosts
 
       - name: anti-ad smartdns

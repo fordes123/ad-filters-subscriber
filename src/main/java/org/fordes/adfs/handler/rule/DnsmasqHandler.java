@@ -36,7 +36,7 @@ public final class DnsmasqHandler extends Handler implements InitializingBean {
             rule.setMode((ip == null || LOCAL_IP.contains(ip)) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
             return rule;
         }
-        return null;
+        return Rule.EMPTY;
     }
 
     @Override
