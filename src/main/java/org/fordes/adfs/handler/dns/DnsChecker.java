@@ -2,6 +2,7 @@ package org.fordes.adfs.handler.dns;
 
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.resolver.ResolvedAddressTypes;
 import io.netty.resolver.dns.DnsNameResolver;
 import io.netty.resolver.dns.DnsNameResolverBuilder;
@@ -40,7 +41,8 @@ public class DnsChecker {
             }).toArray(InetSocketAddress[]::new);
 
             this.resolver = new DnsNameResolverBuilder(eventLoopGroup.next())
-                    .channelType(NioDatagramChannel.class)
+                    .datagramChannelFactory(NioDatagramChannel::new)
+                    .socketChannelFactory(NioSocketChannel::new)
                     .nameServerProvider(new SequentialDnsServerAddressStreamProvider(array))
                     .queryTimeoutMillis(config.timeout)
                     .maxQueriesPerResolve(1)
@@ -81,6 +83,7 @@ public class DnsChecker {
                         Throwable cause = f.cause();
                         if (cause instanceof UnknownHostException) {
                             sink.success(false);
+//                            log.warn("dns check failed: {}", domain, cause);
                         }
                     }
 

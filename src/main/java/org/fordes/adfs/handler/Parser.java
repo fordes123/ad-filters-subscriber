@@ -82,11 +82,13 @@ public class Parser {
                     return Mono.empty();
                 })
                 .flatMap(rule -> {
-                    if (Rule.Type.BASIC.equals(rule.getType()) && Rule.Scope.DOMAIN.equals(rule.getScope())) {
+
+                    if (Rule.Type.BASIC.equals(rule.getType()) && Rule.Scope.DOMAIN.equals(rule.getScope()) &&
+                            Rule.Mode.ALLOW != rule.getMode()) {
                         return dnsChecker.isDomainValid(rule.getTarget())
                                 .flatMap(v -> {
                                     if (!v) {
-                                        log.warn("[{}] invalid rule => {}", prop.name(), rule.getOrigin());
+                                        log.warn("[{}] dns check invalid rule => {}", prop.name(), rule.getOrigin());
                                         invalid.incrementAndGet();
                                         return Mono.empty();
                                     }
