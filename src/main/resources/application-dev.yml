@@ -5,7 +5,8 @@ logging:
 application:
   config:
     domain-detect:
-      enable: false
+      enable: true
+      concurrency: 64
       timeout: 2000
       provider:
         - 223.5.5.5

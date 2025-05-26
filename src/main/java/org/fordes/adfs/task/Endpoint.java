@@ -43,7 +43,7 @@ public class Endpoint {
             long start = System.currentTimeMillis();
             this.initialize()
                     .thenMany(Flux.fromStream(input.stream()))
-                    .flatMap(e -> parser.handle(e.getValue(), e.getKey()), 5)
+                    .flatMap(e -> parser.handle(e.getValue(), e.getKey()), 1)
                     .flatMap(rule -> Flux.fromIterable(output.getFiles())
                             .filter(file -> file.filter().contains(rule.getType()))
                             .flatMap(config -> {

@@ -85,19 +85,20 @@ public class Parser {
 
                     if (Rule.Type.BASIC.equals(rule.getType()) && Rule.Scope.DOMAIN.equals(rule.getScope()) &&
                             Rule.Mode.ALLOW != rule.getMode()) {
-                        return dnsChecker.isDomainValid(rule.getTarget())
-                                .flatMap(v -> {
-                                    if (!v) {
-                                        log.warn("[{}] dns check invalid rule => {}", prop.name(), rule.getOrigin());
+
+                        return Flux.just(rule.getTarget())
+                                .flatMap(e -> dnsChecker.lookup(e), 1)
+                                .flatMap(e -> {
+                                    if (!e) {
+                                        log.debug("[{}] dns check invalid rule => {}", prop.name(), rule.getOrigin());
                                         invalid.incrementAndGet();
                                         return Mono.empty();
                                     }
-
                                     return Mono.just(rule);
                                 });
                     }
                     return Mono.just(rule);
-                })
+                }, dnsChecker.getConfig().concurrency())
                 .flatMap(e -> {
                     filter.add(e);
                     effective.incrementAndGet();
