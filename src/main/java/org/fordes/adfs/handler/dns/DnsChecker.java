@@ -94,7 +94,7 @@ public class DnsChecker {
                 return;
             }
 
-            Future<InetAddress> future = resolver.resolve(domain);
+            Future<List<InetAddress>> future = resolver.resolveAll(domain);
             future.addListener(result -> {
 
                 boolean res = true;
