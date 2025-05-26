@@ -25,7 +25,7 @@ public final class HostsHandler extends Handler implements InitializingBean {
     public Rule parse(String line) {
         Map.Entry<String, String> entry = Util.parseHosts(line);
         if (entry == null || Objects.equals(entry.getKey(), entry.getValue())) {
-            return null;
+            return Rule.EMPTY;
         }
 
         Rule rule = new Rule();

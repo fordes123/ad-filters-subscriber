@@ -3,6 +3,7 @@ package org.fordes.adfs.config;
 import lombok.Data;
 import org.fordes.adfs.enums.HandleType;
 import org.fordes.adfs.enums.RuleSet;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +16,7 @@ import java.util.stream.Stream;
 @Data
 @Component
 @ConfigurationProperties(prefix = "application.rule")
-public class InputProperties {
+public class InputProperties implements InitializingBean {
 
     private Set<Prop> remote = Set.of();
     private Set<Prop> local = Set.of();
@@ -37,6 +38,13 @@ public class InputProperties {
     public void setLocal(Set<Prop> local) {
         this.local = Optional.ofNullable(local)
                 .map(e -> e.stream().filter(p -> !p.path.isEmpty()).collect(Collectors.toSet())).orElse(Set.of());
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        if ((remote == null || remote.isEmpty()) && (local == null || local.isEmpty())) {
+            throw new IllegalArgumentException("application.rule is required");
+        }
     }
 
     public record Prop(String name, RuleSet type, String path) {

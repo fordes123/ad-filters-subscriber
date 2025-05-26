@@ -25,7 +25,7 @@ public final class ClashHandler extends Handler implements InitializingBean {
     public Rule parse(String line) {
         //跳过文件头
         if (line.startsWith(PAYLOAD)) {
-            return null;
+            return Rule.EMPTY;
         }
 
         Rule rule = new Rule();
