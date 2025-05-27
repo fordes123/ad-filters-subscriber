@@ -61,7 +61,7 @@ public class Endpoint {
                                 .bufferTimeout(5000, Duration.ofSeconds(1))
                                 .concatMap(batch -> asyncBatchWrite(path, batch))
                                 .subscribeOn(Schedulers.single());
-                    }, 64)
+                    })
                     .then()
                     .doFinally(signal -> {
                         log.info("all done, cost {}ms", System.currentTimeMillis() - start);

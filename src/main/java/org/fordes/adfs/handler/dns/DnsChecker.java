@@ -66,7 +66,7 @@ public class DnsChecker {
 
         } else {
             log.warn("dns check is disabled");
-            this.resolvers = new ArrayBlockingQueue<>(0);
+            this.resolvers = null;
             this.eventLoopGroup = null;
             this.provider = null;
         }
@@ -85,6 +85,11 @@ public class DnsChecker {
 
     public Mono<Boolean> lookup(String domain) {
         return Mono.create(sink -> {
+            if (resolvers == null) {
+                sink.success(true);
+                return;
+            }
+
             DnsNameResolver resolver;
             try {
                 resolver = resolvers.take();

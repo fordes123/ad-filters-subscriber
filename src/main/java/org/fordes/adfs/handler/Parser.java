@@ -83,8 +83,8 @@ public class Parser {
                 })
                 .flatMap(rule -> {
 
-                    if (Rule.Type.BASIC.equals(rule.getType()) && Rule.Scope.DOMAIN.equals(rule.getScope()) &&
-                            Rule.Mode.ALLOW != rule.getMode()) {
+                    if (dnsChecker.getConfig().enable() && Rule.Type.BASIC.equals(rule.getType())
+                            && Rule.Scope.DOMAIN.equals(rule.getScope()) && !rule.getControls().contains(Rule.Control.OVERLAY)) {
 
                         return Flux.just(rule.getTarget())
                                 .flatMap(e -> dnsChecker.lookup(e), 1)
