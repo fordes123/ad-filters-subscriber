@@ -83,8 +83,13 @@ public class Parser {
                 })
                 .flatMap(rule -> {
 
+                    /**
+                     * 假设有规则 ||example.org^
+                     * 通过DNS查询 example.org 是否存在 A/AAAA/CNAME 记录作为判断依据
+                     * 不可避免的误判是，example.org 没有有效记录，而其存在有效子域如 test.example.org
+                     */
                     if (dnsChecker.getConfig().enable() && Rule.Type.BASIC.equals(rule.getType())
-                            && Rule.Scope.DOMAIN.equals(rule.getScope()) && !rule.getControls().contains(Rule.Control.OVERLAY)) {
+                            && Rule.Scope.DOMAIN.equals(rule.getScope())) {
 
                         return Flux.just(rule.getTarget())
                                 .flatMap(e -> dnsChecker.lookup(e), 1)

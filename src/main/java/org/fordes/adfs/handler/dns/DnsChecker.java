@@ -50,6 +50,8 @@ public class DnsChecker {
                 this.provider = new SequentialDnsServerAddressStreamProvider(array);
             }
 
+            final DnsCache cache = new DefaultDnsCache(5, 60, 60);
+            final DnsCnameCache cnameCache = new DefaultDnsCnameCache(5, 60);
             IntStream.range(0, config.concurrency)
                     .forEach(i -> {
                         EventLoop eventLoop = this.eventLoopGroup.next();
@@ -60,6 +62,8 @@ public class DnsChecker {
                                 .queryTimeoutMillis(config.timeout)
                                 .maxQueriesPerResolve(1)
                                 .resolvedAddressTypes(ResolvedAddressTypes.IPV4_PREFERRED)
+                                .resolveCache(cache)
+                                .cnameCache(cnameCache)
                                 .build();
                         resolvers.add(resolver);
                     });
