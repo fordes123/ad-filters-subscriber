@@ -19,3 +19,6 @@ application:
     domain-detect:
       enable: false
       timeout: 10
+
+    lost-collector:
+      enable: true

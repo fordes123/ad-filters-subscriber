@@ -24,13 +24,14 @@ application:
         path: https://o0.pages.dev/Lite/hosts.txt
         type: hosts
 
-      - name: anti-ad smartdns
-        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-smartdns.conf
-        type: smartdns
+  input:
+    - name: anti-ad smartdns
+      path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-smartdns.conf
+      type: smartdns
 
-      - name:
-        path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/adblock-for-dnsmasq.conf
-        type: dnsmasq
+    - name: anti-ad smartdns
+      path: https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/adblock-for-dnsmasq.conf
+      type: dnsmasq
 
   output:
     files:
@@ -44,7 +45,7 @@ application:
       - name: dns.txt
         type: easylist
         file-header: |
-          Test
+          Test ${total}
         filter:
           - basic
           - wildcard

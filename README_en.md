@@ -54,34 +54,39 @@ conversion and integration.
 
 ```yaml
 application:
-  rule:
-    # Remote rule subscription, path is http/https address
-    remote:
-      - name: 'Subscription 1'               # Optional parameter: Rule name, if no name is provided, the path will be used as the name.
-        path: 'https://example.org/rule.txt' # Required parameter: Rule url. Only support http/https. 
-        type: easylist                      # Optional parameter: Rule type: easylist (default)、dnsmasq、clash、smartdns、hosts
 
-    # Local rule, path is absolute or relative path
-    local:
-      - name: 'private rule'
-        path: '/rule/private.txt'
+  # Input configuration
+  input:
+    - name: 'Subscription 1'               # Optional parameter: rule name, will use path as name if not specified
+      path: 'https://example.org/rule.txt' # Required parameter: rule url (http/https) or local file location (absolute/relative path)
+      type: easylist                       # Optional parameter: rule type: easylist (default), dnsmasq, clash, smartdns, hosts
 
+    - name: 'Subscription 2'
+      path: 'rule/local.txt'
+      type: hosts
+
+  # Output configuration
   output:
-    # File header configuration, which will be automatically added as comments at the beginning of each rule file.
-    # You can use placeholders like ${name}, ${type}, ${desc}, and ${date} (current date).
+    # File header configuration, will be automatically added as comments at the beginning of each rule file
+    # Available placeholders: ${name}, ${type}, ${desc}, ${date} (current date), ${total} (total number of rules)
     file_header: |
-      ADFS Adblock List
-      Title: ${name}
+      ADFS AdBlock ${type}
       Last Modified: ${date}
+      Total Size: ${total}
       Homepage: https://github.com/fordes123/ad-filters-subscriber/
+
     files:
-      - name: easylist.txt     # Required parameter: File name
-        type: EASYLIST         # Required parameter: File type: easylist、dnsmasq、clash、smartdns、hosts
-        desc: 'ADFS EasyList'  # Optional parameter: File description, which can be used within ${} in the file_header.
-        filter:                # Optional parameter: Types of included rules, all selected by default.
-          - basic              # Basic rules: Do not contain any control or matching symbols, can be converted to hosts.
-          - wildcard           # Wildcard rules: Only use wildcard symbols.
-          - unknown            # Other rules: Such as those using regex or advanced modifiers, cannot be converted at present.
+      - name: easylist.txt     # Required parameter: file name
+        type: easylist         # Required parameter: file type: easylist, dnsmasq, clash, smartdns, hosts
+        file_header:           # Optional parameter: file header configuration, will be automatically added as comments at the beginning of each rule file (takes precedence over output.file_header)
+        desc: 'ADFS EasyList'  # Optional parameter: file description, can be used in file_header with ${}
+        filter:
+          - basic              # Basic rules, without any control or matching symbols, can be converted to hosts
+          - wildcard           # Wildcard rules, using wildcards only
+          - unknown            # Other rules, such as those using regex or advanced modifiers, these rules currently cannot be converted to other formats
+        rule:                  # Optional parameter: specify the rule sources to be used for this file, if not specified, all rule sources in input will be used
+          - Subscription 1
+          - Subscription 2
 ```
 
 ---
