@@ -43,7 +43,6 @@ public class AdFSApplication {
     private final AdFSProperties.OutputProperties output;
     private final Parser parser;
 
-    private final AtomicLong totalCount;
     private final Map<String, Output> outputMap;
 
     public record Output(AdFSProperties.OutputItem item, Path tempFile, AtomicLong count) {
@@ -58,8 +57,6 @@ public class AdFSApplication {
         this.parser = parser;
         this.inputs = properties.getInput();
         this.output = properties.getOutput();
-
-        this.totalCount = new AtomicLong(0L);
         this.outputMap = new HashMap<>(properties.getOutput().files().size(), 1);
         properties.getOutput().files().forEach(file -> {
             try {
@@ -94,7 +91,7 @@ public class AdFSApplication {
                         this.exit();
                     })
                     .doFinally(signal -> {
-                        log.info("all done, total: {}, cost: {} ms", totalCount.get(), System.currentTimeMillis() - start);
+                        log.info("all done, cost: {} ms", System.currentTimeMillis() - start);
                         this.exit();
                     })
                     .subscribe();
@@ -130,16 +127,14 @@ public class AdFSApplication {
                     Path targetFile = dir.resolve(file.name());
                     String header = buildHeader(file, output.fileHeader(), Long.toString(opt.count.get()));
 
-                    return prependAndMove(targetFile, tempFile, header)
-                            .subscribeOn(Schedulers.boundedElastic());
+                    log.info("[{}] written completed, total size => {}", file.name(), opt.count.get());
+                    return prependAndMove(targetFile, tempFile, header).subscribeOn(Schedulers.boundedElastic());
                 })
                 .then();
     }
 
     private Mono<Void> asyncBatchWrite(String fileName, List<String> batch) {
         Output opt = outputMap.get(fileName);
-
-        totalCount.addAndGet(batch.size());
         opt.count().addAndGet(batch.size());
 
         return asyncBatchWrite(opt.tempFile, batch);

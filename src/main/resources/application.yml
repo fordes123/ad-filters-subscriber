@@ -1,6 +1,7 @@
 spring:
   application:
-    name: ad-filters-subscriber
+    name: "@project.name@"
+    version: "@project.version@"
   profiles:
     active: dev
 
