@@ -57,12 +57,12 @@ jobs:
           commit_options: '--allow-empty'
 
       - name: Archive artifacts
-        if: hashFiles('./logs/lost.list') != ''
+        if: hashFiles('logs/lost.list') != ''
         uses: actions/upload-artifact@v4
         with:
           name: tracking
           path: |
-            ./logs/lost.list
+            logs/lost.list
 
       - name: Delete Workflow Runs
         uses: Mattraks/delete-workflow-runs@v2
