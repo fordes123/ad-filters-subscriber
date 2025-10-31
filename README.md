@@ -46,34 +46,39 @@
 
 ```yaml
 application:
-  rule:
-    #远程规则订阅，path为 http、https地址
-    remote:
-      - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
-        path: 'https://example.org/rule.txt' #必要参数: 规则url，仅支持 http/https，不限定响应内容格式
-        type:  easylist                      #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
+  
+  # 输入配置
+  input:
+    - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
+      path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)
+      type: easylist                       #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
 
-    #本地规则，path为 操作系统支持的绝对或相对路径
-    local:
-      - name: 'private rule'
-        path: '/rule/private.txt'
+    - name: 'Subscription 2'
+      path: 'rule/local.txt'
+      type: hosts
 
+  # 输出配置
   output:
     #文件头配置，将自动作为注释添加至每个规则文件开始
-    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)
+    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)、${total} (规则总数)
     file_header: |
-      ADFS Adblock List
-      Title: ${name}
+      ADFS AdBlock ${type}
       Last Modified: ${date}
+      Total Size: ${total}
       Homepage: https://github.com/fordes123/ad-filters-subscriber/
+      
     files:
       - name: easylist.txt     #必要参数: 文件名
-        type: EASYLIST         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        type: easylist         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
         desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
-        filter:                #可选参数: 包含规则的类型，默认全选
+        filter:
           - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts
           - wildcard           #通配规则，仅使用通配符
-          - unknown            #其他规则，如使用了正则、高级修饰符号等，这表示目前无法支持
+          - unknown            #其他规则，如使用了正则、高级修饰符号的规则，这些规则目前无法转换为其他格式
+        rule:                  #可选参数: 限定此文件使用的规则源，如果不指定则使用 input 中的所有规则源
+          - Subscription 1
+          - Subscription 2     
 ```
 
 ---
