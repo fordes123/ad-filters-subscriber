@@ -3,7 +3,7 @@ spring:
     name: "@project.name@"
     version: "@project.version@"
   profiles:
-    active: dev
+    active: prod
 
 logging:
   file:
