@@ -86,4 +86,4 @@ application:
     # 通过文件收集程序认定无效的规则，用于排查问题
     tracking:
       enable: true
-      path: logs/lost.list
+      path: logs/tracking.list

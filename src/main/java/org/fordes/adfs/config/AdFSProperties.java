@@ -145,6 +145,6 @@ public class AdFSProperties implements InitializingBean {
     }
 
     public record Tracking(@DefaultValue("false") Boolean enable,
-                           @DefaultValue("logs/lost.list") String path) {
+                           @DefaultValue("logs/tracking.list") String path) {
     }
 }

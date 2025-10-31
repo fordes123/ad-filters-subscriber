@@ -14,4 +14,4 @@ application:
   config:
     tracking:
       enable: true
-      path: logs/lost.list
+      path: logs/tracking.list
