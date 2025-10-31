@@ -31,11 +31,14 @@ public class AdFSProperties implements InitializingBean {
     @NotNull
     private OutputProperties output;
 
+    /**
+     * @see #input
+     */
+    @Deprecated
     private Map<String, Set<InputProperties>> rule;
 
     @Override
     public void afterPropertiesSet() {
-        this.input = Optional.ofNullable(input).orElseGet(HashSet::new);
         if (rule != null && !rule.isEmpty()) {
             rule.forEach((k, v) -> this.input.addAll(v));
         }
@@ -68,7 +71,7 @@ public class AdFSProperties implements InitializingBean {
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof InputProperties prop) {
-                return prop.path.equals(this.path);
+                return prop.path.equals(this.path) || prop.name.equals(this.name);
             }
             return false;
         }
@@ -117,11 +120,11 @@ public class AdFSProperties implements InitializingBean {
             @DefaultValue()
             Set<String> exclude,
 
-            @Valid
+            @DefaultValue
             DomainDetect domainDetect,
 
-            @Valid
-            Collector lostCollector
+            @DefaultValue
+            Tracking tracking
     ) {
 
     }
@@ -141,7 +144,7 @@ public class AdFSProperties implements InitializingBean {
 
     }
 
-    public record Collector(@DefaultValue("false") Boolean enable,
-                            @DefaultValue("logs/lost.txt") String path) {
+    public record Tracking(@DefaultValue("false") Boolean enable,
+                           @DefaultValue("logs/lost.txt") String path) {
     }
 }

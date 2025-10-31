@@ -47,7 +47,7 @@
 ```yaml
 application:
   
-  # 输出配置
+  # 输入配置
   input:
     - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
       path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)

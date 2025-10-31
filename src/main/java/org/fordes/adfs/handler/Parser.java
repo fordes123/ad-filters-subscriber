@@ -28,14 +28,14 @@ public class Parser {
     protected final BloomFilter<Rule> filter;
     protected final Config config;
     protected final DnsDetector detector;
-    protected final LostCollector collector;
+    protected final Tracker tracker;
 
     public Parser(AdFSProperties properties, Optional<DnsDetector> detector,
-                  Optional<LostCollector> collector) {
+                  Optional<Tracker> tracker) {
 
         this.config = properties.getConfig();
         this.detector = detector.orElse(null);
-        this.collector = collector.orElse(null);
+        this.tracker = tracker.orElse(null);
         this.filter = BloomFilter.apply(config.expectedQuantity(), config.faultTolerance(), rule -> rule.hashCode());
     }
 
@@ -73,8 +73,8 @@ public class Parser {
                     if (Rule.EMPTY.equals(rule)) {
                         invalid.incrementAndGet();
                         log.debug("[{}] parse fail: {}", prop.name(), line);
-                        if (collector != null) {
-                            collector.writeSync(Constants.Collector.PARSER, prop.name(), line);
+                        if (tracker != null) {
+                            tracker.writeSync(Constants.Collector.PARSER, prop.name(), line);
                         }
                         return Mono.empty();
                     }
@@ -122,8 +122,8 @@ public class Parser {
                                     if (!e) {
                                         invalid.incrementAndGet();
                                         log.debug("[{}] dns check invalid rule => {}", prop.name(), rule.getOrigin());
-                                        if (collector != null) {
-                                            collector.writeSync(Constants.Collector.DNS_CHECK,prop.name(), rule.getOrigin());
+                                        if (tracker != null) {
+                                            tracker.writeSync(Constants.Collector.DNS_CHECK,prop.name(), rule.getOrigin());
                                         }
                                         return Mono.empty();
                                     }

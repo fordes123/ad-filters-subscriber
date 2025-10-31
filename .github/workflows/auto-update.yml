@@ -60,7 +60,7 @@ jobs:
         if: hashFiles('./logs/lost.list') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: lost.list
+          name: tracking
           path: |
             ./logs/lost.list
 

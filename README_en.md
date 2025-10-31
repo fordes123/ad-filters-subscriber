@@ -57,7 +57,7 @@ application:
 
   # Input configuration
   input:
-    - name: 'Subscription 1'               # Optional parameter: rule name, will use path as name if not specified
+    - name: 'Subscription 1'               # Optional parameter: rule name, keep unique
       path: 'https://example.org/rule.txt' # Required parameter: rule url (http/https) or local file location (absolute/relative path)
       type: easylist                       # Optional parameter: rule type: easylist (default), dnsmasq, clash, smartdns, hosts
 

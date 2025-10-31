@@ -24,15 +24,15 @@ import java.util.List;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "application.config.lost-collector", name = "enable", havingValue = "true")
-public class LostCollector implements DisposableBean {
+@ConditionalOnProperty(prefix = "application.config.tracking", name = "enable", havingValue = "true")
+public class Tracker implements DisposableBean {
 
     private final Path file;
     private final Sinks.Many<String> sink;
     private final Disposable subscription;
 
-    public LostCollector(AdFSProperties properties) throws IOException {
-        var config = properties.getConfig().lostCollector();
+    public Tracker(AdFSProperties properties) throws IOException {
+        var config = properties.getConfig().tracking();
 
         this.file = Path.of(config.path());
         if (file.getParent() != null) {
@@ -53,9 +53,7 @@ public class LostCollector implements DisposableBean {
     }
 
     public Mono<Void> write(String source, String ruleName, String rule) {
-        String _s = source.length() > 10 ? source.substring(0, 10) : source;
-        String _r = ruleName.length() > 20 ? ruleName.substring(0, 20) : ruleName;
-        String line = String.format("[%-10.10s] [%-20.20s] %s\n", _s, _r, rule);
+        String line = String.format("[%s] [%s] %s\n", source, ruleName, rule);
         return Mono.fromRunnable(() -> sink.tryEmitNext(line));
     }
 
