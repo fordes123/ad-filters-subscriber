@@ -58,3 +58,10 @@ application:
 
       - name: hosts
         type: hosts
+
+  config:
+    domain-detect:
+      enable: true
+      concurrency: 256
+      provider:
+        - 1.1.1.1

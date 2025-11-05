@@ -136,7 +136,16 @@ public class AdFSProperties implements InitializingBean {
             @Positive @DefaultValue("1000")
             Integer timeout,
 
-            @Positive @DefaultValue("4")
+            @Positive @DefaultValue("600")
+            Integer cacheTtlMin,
+
+            @Positive @DefaultValue("86400")
+            Integer cacheTtlMax,
+
+            @Positive @DefaultValue("300")
+            Integer cacheNegativeTtl,
+
+            @Positive @DefaultValue("128")
             Integer concurrency,
 
             @DefaultValue

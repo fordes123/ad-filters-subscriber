@@ -75,6 +75,9 @@ application:
       enable: false   # 是否启用
       timeout: 2000   # 查询超时（毫秒）
       concurrency: 10 # 并发查询数
+      cache-ttl-min: 600            # 缓存最小TTL（秒）
+      cache-ttl-max: 86400          # 缓存最大TTL（秒）
+      cache-negative-ttl: 300       # 失败结果缓存TTL（秒）
       provider:       # 使用的 DNS 服务器，仅支持 IP，多个之间具备优先级; 为空则使用默认DNS
         - 223.5.5.5
 
