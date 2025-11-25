@@ -29,22 +29,16 @@ application:
     files:
       - name: easylist.txt
         type: easylist
-        filter:
-          - basic
-          - wildcard
-          - unknown
 
       - name: dns.txt
-        type: easylist
+        type: dns
         file-header: |
           Test ${total}
-        filter:
-          - basic
-          - wildcard
 
       - name: modify.txt
         type: easylist
         filter:
+          - regex
           - unknown
 
       - name: dnsmasq.conf

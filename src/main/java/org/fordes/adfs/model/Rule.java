@@ -72,7 +72,6 @@ public class Rule {
         /**
          * 覆盖子域名
          */
-
         OVERLAY,
 
         /**
@@ -80,6 +79,7 @@ public class Rule {
          */
         QUALIFIER,
 
+        ALL,
         ;
     }
 
@@ -120,6 +120,9 @@ public class Rule {
          * 通配规则，仅使用通配符
          */
         WILDCARD,
+
+
+        REGEX,
 
         /**
          * 其他规则，如使用了正则、高级修饰符号等，这表示目前无法支持
