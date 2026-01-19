@@ -2,8 +2,8 @@ package org.fordes.adfs.handler;
 
 import bloomfilter.mutable.BloomFilter;
 import lombok.extern.slf4j.Slf4j;
+import org.fordes.adfs.AdFSApplication;
 import org.fordes.adfs.config.AdFSProperties;
-import org.fordes.adfs.constant.Constants;
 import org.fordes.adfs.enums.HandleType;
 import org.fordes.adfs.handler.dns.DnsDetector;
 import org.fordes.adfs.handler.fetch.Fetcher;
@@ -16,7 +16,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 import static org.fordes.adfs.config.AdFSProperties.Config;
 import static org.fordes.adfs.config.AdFSProperties.InputProperties;
@@ -28,14 +28,11 @@ public class Parser {
     protected final BloomFilter<Rule> filter;
     protected final Config config;
     protected final DnsDetector detector;
-    protected final Tracker tracker;
 
-    public Parser(AdFSProperties properties, Optional<DnsDetector> detector,
-                  Optional<Tracker> tracker) {
+    public Parser(AdFSProperties properties, Optional<DnsDetector> detector) {
 
         this.config = properties.getConfig();
         this.detector = detector.orElse(null);
-        this.tracker = tracker.orElse(null);
         this.filter = BloomFilter.apply(config.expectedQuantity(), config.faultTolerance(), rule -> rule.hashCode());
     }
 
@@ -48,10 +45,10 @@ public class Parser {
 
     public Flux<Rule> handle(InputProperties prop, HandleType type) {
 
-        AtomicLong total = new AtomicLong(0L);
-        AtomicLong invalid = new AtomicLong(0L);
-        AtomicLong repeat = new AtomicLong(0L);
-        AtomicLong effective = new AtomicLong(0L);
+        LongAdder total = new LongAdder();
+        LongAdder invalid = new LongAdder();
+        LongAdder repeat = new LongAdder();
+        LongAdder effective = new LongAdder();
         Set<String> exclude = Optional.ofNullable(config.exclude()).orElseGet(Set::of);
         long start = System.currentTimeMillis();
 
@@ -65,17 +62,15 @@ public class Parser {
                     Handler handler = Handler.getHandler(prop.type());
 
                     if (handler.isComment(line)) {
+                        log.trace("[{}] comment line: {}", prop.name(), line);
                         return Mono.empty();
                     }
 
                     Rule rule = handler.parse(line);
-                    total.incrementAndGet();
+                    total.increment();
                     if (Rule.EMPTY.equals(rule)) {
-                        invalid.incrementAndGet();
-                        log.debug("[{}] parse fail: {}", prop.name(), line);
-                        if (tracker != null) {
-                            tracker.writeSync(Constants.Collector.PARSER, prop.name(), line);
-                        }
+                        invalid.increment();
+                        log.warn("[{}] unresolvable: {}", prop.name(), line);
                         return Mono.empty();
                     }
 
@@ -85,13 +80,13 @@ public class Parser {
                 .flatMap(e -> {
 
                     if (e.getTarget() != null && exclude.contains(e.getTarget())) {
-                        log.info("exclude rule: {}", e.getOrigin());
+                        log.info("[{}] excluded: {}", prop.name(), e.getOrigin());
                         return Mono.empty();
                     }
 
                     if (filter.mightContain(e)) {
-                        log.debug("already exists rule: {}", e.getOrigin());
-                        repeat.incrementAndGet();
+                        log.info("[{}] already exists: {}", prop.name(), e.getOrigin());
+                        repeat.increment();
                         return Mono.empty();
                     }
 
@@ -103,7 +98,7 @@ public class Parser {
 
                 })
                 .onErrorResume(ex -> {
-                    log.error("Parse {} failed", prop.name(), ex);
+                    log.error("[{}] parse error: {}", prop.name(), ex.getMessage());
                     return Mono.empty();
                 })
                 .flatMap(rule -> {
@@ -120,11 +115,8 @@ public class Parser {
                                 .flatMap(e -> detector.lookup(e), 1)
                                 .flatMap(e -> {
                                     if (!e) {
-                                        invalid.incrementAndGet();
-                                        log.debug("[{}] dns check invalid rule => {}", prop.name(), rule.getOrigin());
-                                        if (tracker != null) {
-                                            tracker.writeSync(Constants.Collector.DNS_CHECK,prop.name(), rule.getOrigin());
-                                        }
+                                        invalid.increment();
+                                        log.warn("[{}] dns check nopass: {}", prop.name(), rule.getOrigin());
                                         return Mono.empty();
                                     }
                                     return Mono.just(rule);
@@ -134,14 +126,14 @@ public class Parser {
                 }, config.domainDetect().concurrency())
                 .flatMap(e -> {
                     filter.add(e);
-                    effective.incrementAndGet();
+                    effective.increment();
                     return Mono.just(e);
 
                 })
                 .doFinally(signal -> {
-                    log.info("[{}] parsing cost {} ms, total: {}, effective: {}, repeat: {}, invalid: {}",
+                    AdFSApplication.log.info("[{}] parsing cost {} ms, total: {}, effective: {}, repeat: {}, invalid: {}",
                             prop.name(), System.currentTimeMillis() - start,
-                            total.get(), effective.get(), repeat.get(), invalid.get());
+                            total.longValue(), effective.longValue(), repeat.longValue(), invalid.longValue());
                 });
 
     }

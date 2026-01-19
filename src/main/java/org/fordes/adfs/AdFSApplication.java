@@ -1,5 +1,6 @@
 package org.fordes.adfs;
 
+import lombok.AccessLevel;
 import lombok.extern.slf4j.Slf4j;
 import org.fordes.adfs.config.AdFSProperties;
 import org.fordes.adfs.constant.Constants;
@@ -33,7 +34,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-@Slf4j
+@Slf4j(access = AccessLevel.PUBLIC)
 @Component
 @SpringBootApplication
 public class AdFSApplication {

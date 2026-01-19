@@ -37,12 +37,32 @@
         </encoder>
     </appender>
 
+    <appender name="parserTrackerAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_HOME}/parser.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- daily rollover -->
+            <fileNamePattern>${LOG_HOME}/parser.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- keep 30 days' worth of history capped at 3GB total size -->
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <append>false</append>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
     <appender name="asyncFileAppender" class="ch.qos.logback.classic.AsyncAppender">
         <includeCallerData>true</includeCallerData>
         <queueSize>4096</queueSize>
         <neverBlock>true</neverBlock>
         <appender-ref ref="rollingFileAppender"/>
     </appender>
+
+    <logger name="org.fordes.adfs.handler.Parser" level="trace" additivity="false">
+        <appender-ref ref="parserTrackerAppender"/>
+    </logger>
 
     <springProfile name="dev">
         <logger name="org.fordes" additivity="true" level="debug"/>

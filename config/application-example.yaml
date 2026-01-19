@@ -85,8 +85,3 @@ application:
     # 在解析结束后，规则内容命中此列表将直接认定为无效
     exclude:
       - "www.example.org"
-
-    # 通过文件收集程序认定无效的规则，用于排查问题
-    tracking:
-      enable: true
-      path: logs/tracking.list
