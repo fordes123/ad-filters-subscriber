@@ -14,6 +14,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <spring-boot.version>3.5.7</spring-boot.version>
+        <commons-codec.version>1.20.0</commons-codec.version>
+        <fastutil.version>8.5.18</fastutil.version>
         <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
     </properties>
 
@@ -30,9 +32,17 @@
         </dependency>
 
         <dependency>
-            <groupId>com.github.alexandrnikitin</groupId>
-            <artifactId>bloom-filter_2.13</artifactId>
-            <version>0.13.1</version>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>${commons-codec.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>it.unimi.dsi</groupId>
+            <artifactId>fastutil</artifactId>
+            <version>${fastutil.version}</version>
+            <scope>compile</scope>
         </dependency>
 
         <dependency>

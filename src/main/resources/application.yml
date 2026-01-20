@@ -11,7 +11,3 @@ logging:
     console: UTF-8
   file:
     path: ./logs
-
-application:
-  input:
-  config:

@@ -54,8 +54,12 @@ application:
         type: hosts
 
   config:
-    domain-detect:
-      enable: true
-      concurrency: 256
-      provider:
-        - 1.1.1.1
+    parser:
+      dns-probe:
+        enable: true
+        parallel: 16
+        provider:
+          - host: 223.5.5.5
+            port: 53
+
+          - host: 114.114.114.114

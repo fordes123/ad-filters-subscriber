@@ -1,8 +1,13 @@
 package org.fordes.adfs.model;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 import lombok.Data;
+import org.apache.commons.codec.digest.MurmurHash3;
+import org.fordes.adfs.config.InputProperties;
 import org.fordes.adfs.enums.RuleSet;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -14,7 +19,7 @@ import java.util.Set;
 public class Rule {
 
     /**
-     * 规则来源名称，及 {@link org.fordes.adfs.config.AdFSProperties.InputProperties#name}
+     * 规则来源名称，及 {@link InputProperties.Item#name()}
      */
     private String sourceName;
 
@@ -59,6 +64,28 @@ public class Rule {
     private Set<Control> controls = new HashSet<>(Control.values().length, 1.0f);
 
     public static final Rule EMPTY = new Rule();
+
+    public long murmur3Hash() {
+        ByteBuf buffer = PooledByteBufAllocator.DEFAULT.buffer(256);
+        try {
+            if (Type.UNKNOWN == this.type) {
+                int len = buffer.writeCharSequence(this.origin, StandardCharsets.UTF_8);
+                buffer.writeInt(len);
+            } else {
+                buffer.writeCharSequence(this.target, StandardCharsets.UTF_8);
+                buffer.writeInt(this.mode.ordinal());
+                buffer.writeInt(this.scope.ordinal());
+                buffer.writeInt(this.type.ordinal());
+            }
+
+            byte[] bytes = new byte[buffer.readableBytes()];
+            buffer.readBytes(bytes);
+            long[] hash128x64 = MurmurHash3.hash128x64(bytes, 0, bytes.length, 0);
+            return hash128x64[0];
+        } finally {
+            buffer.release();
+        }
+    }
 
     /**
      * 规则控制参数
@@ -179,16 +206,14 @@ public class Rule {
 
     @Override
     public String toString() {
-        if (Type.UNKNOWN == this.type) {
-            return "Rule{" +
-                    "origin='" + origin + '\'' +
-                    '}';
-        }
         return "Rule{" +
-                "target='" + target + '\'' +
+                "origin='" + origin + '\'' +
+                ", target='" + target + '\'' +
+                ", dest='" + dest + '\'' +
                 ", mode=" + mode +
                 ", scope=" + scope +
                 ", type=" + type +
+                ", controls=" + controls +
                 '}';
     }
 }

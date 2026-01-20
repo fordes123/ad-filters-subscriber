@@ -64,24 +64,57 @@ application:
   # ！删除即使用默认配置
   config:
 
-    expected_quantity: 2000000  #预期规则数量
-    fault_tolerance: 0.001 #容错率
-    warn_limit: 6 #警告阈值, 原始规则长度小于该值时会输出警告日志
+    #获取器配置
+    fetcher:
 
-    # 域名检测，启用时将进行解析以验证域名有效性
-    # ！开启此功能可能导致处理时间大幅延长
-    # ！仅支持特定规则，具体原因请查看项目主页说明
-    domain-detect:
-      enable: false   # 是否启用
-      timeout: 2000   # 查询超时（毫秒）
-      concurrency: 10 # 并发查询数
-      cache-ttl-min: 600            # 缓存最小TTL（秒）
-      cache-ttl-max: 86400          # 缓存最大TTL（秒）
-      cache-negative-ttl: 300       # 失败结果缓存TTL（秒）
-      provider:       # 使用的 DNS 服务器，仅支持 IP，多个之间具备优先级; 为空则使用默认DNS
-        - 223.5.5.5
+      http:
+        charset: UTF-8
+        connect-timeout: 10s
+        read-timeout: 30s
+        write-timeout: 30s
+        response-timeout: 30s
+        buffer-size: 4KB
 
-    # 排除指定内容
-    # 在解析结束后，规则内容命中此列表将直接认定为无效
-    exclude:
-      - "www.example.org"
+      local:
+        charset: UTF-8
+        buffer-size: 4KB
+
+    #解析器配置
+    parser:
+
+      # 日志级别
+      # 解析器日志将单独输出到 parser.log 文件
+      log-level: trace
+
+      # 建议最小规则长度
+      # 一般来说越短的规则杀伤力越大，当超出此长度时，解析器会输出警告日志
+      alert-length: 6
+
+      # 预期总规则数量
+      # 此选项有助于提前分配内存以提高去重性能
+      # 建议留空或设置一个保守值，不可过大
+      expected: 200000
+
+      # 域名探测
+      # 当启用此项时，解析器将尝试通过 DNS 解析来判断规则是否有效
+      # ! 此功能将导致处理时间大幅延长
+      dns-probe:
+        enable: false   # 是否启用
+        timeout: 2s   # 查询超时
+        parallel: 10    # 并发查询数
+        cache-ttl-min: 600s            # 缓存最小TTL
+        cache-ttl-max: 86400s          # 缓存最大TTL
+        cache-negative-ttl: 300s       # 失败结果缓存TTL
+        # 使用的 DNS 服务器
+        # 多个之间具备优先级，为空则使用系统默认DNS
+        provider:
+          - host: 223.5.5.5
+            port: 53 # port 可以省略，默认为 53
+
+          - host: 114.114.114.114
+
+      # 排除域 (白名单)
+      # 若规则目标域名在此列表中，则直接排除
+      # ! 只适用可以被解析的规则
+      excludes:
+        - "www.example.org"

@@ -1,8 +1,10 @@
 package org.fordes.adfs;
 
 import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.fordes.adfs.config.AdFSProperties;
+import org.fordes.adfs.config.InputProperties;
+import org.fordes.adfs.config.OutputProperties;
 import org.fordes.adfs.constant.Constants;
 import org.fordes.adfs.handler.Parser;
 import org.fordes.adfs.handler.rule.Handler;
@@ -10,6 +12,7 @@ import org.fordes.adfs.model.Rule;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
@@ -37,29 +40,29 @@ import java.util.concurrent.atomic.AtomicLong;
 @Slf4j(access = AccessLevel.PUBLIC)
 @Component
 @SpringBootApplication
+@ConfigurationPropertiesScan(value = "org.fordes.adfs.config")
+@RequiredArgsConstructor
 public class AdFSApplication {
 
     private final ApplicationContext context;
-    private final Set<AdFSProperties.InputProperties> inputs;
-    private final AdFSProperties.OutputProperties output;
+    private final InputProperties input;
+    private final OutputProperties output;
     private final Parser parser;
-
-    private final Map<String, Output> outputMap;
-
-    public record Output(AdFSProperties.OutputItem item, Path tempFile, AtomicLong count) {
-    }
+    private Map<String, Output> outputMap;
 
     public static void main(String[] args) {
         SpringApplication.run(AdFSApplication.class, args);
     }
 
-    public AdFSApplication(ApplicationContext context, AdFSProperties properties, Parser parser) {
-        this.context = context;
-        this.parser = parser;
-        this.inputs = properties.getInput();
-        this.output = properties.getOutput();
-        this.outputMap = new HashMap<>(properties.getOutput().files().size(), 1);
-        properties.getOutput().files().forEach(file -> {
+    public record Output(OutputProperties.Item item, Path tempFile, AtomicLong count) {
+    }
+
+    @Bean
+    public ApplicationRunner start() {
+
+        // 创建临时文件
+        this.outputMap = new HashMap<>(this.output.files().size(), 1);
+        this.output.files().forEach(file -> {
             try {
                 Path tempFile = Files.createTempFile(file.name(), ".tmp");
                 this.outputMap.put(file.name(), new Output(file, tempFile, new AtomicLong(0L)));
@@ -68,15 +71,12 @@ public class AdFSApplication {
                 this.exit();
             }
         });
-    }
 
-    @Bean
-    public ApplicationRunner start() {
         return args -> {
             long start = System.currentTimeMillis();
 
 
-            Flux.fromIterable(inputs)
+            Flux.fromIterable(this.input.input())
                     .flatMap(parser::handle, 1)
                     .flatMap(rule -> this.output(output.files(), rule))
                     .groupBy(Tuple2::getT1, Tuple2::getT2)
@@ -99,7 +99,7 @@ public class AdFSApplication {
         };
     }
 
-    public Flux<Tuple2<AdFSProperties.OutputItem, String>> output(Set<AdFSProperties.OutputItem> outputs, Rule rule) {
+    private Flux<Tuple2<OutputProperties.Item, String>> output(Set<OutputProperties.Item> outputs, Rule rule) {
         return Flux.fromIterable(outputs)
                 .filter(file -> file.rule().isEmpty() || file.rule().contains(rule.getSourceName()))
                 .filter(file -> file.filter().isEmpty() || file.filter().contains(rule.getType()))
@@ -190,11 +190,21 @@ public class AdFSApplication {
     }
 
     private void exit() {
+        //删除临时文件
+        Optional.ofNullable(this.outputMap).ifPresent(map -> {
+            map.forEach((k, v) -> {
+                try {
+                    Files.deleteIfExists(v.tempFile);
+                } catch (IOException ignored) {
+                    //ignore
+                }
+            });
+        });
         int exit = SpringApplication.exit(this.context, () -> 0);
         System.exit(exit);
     }
 
-    private String buildHeader(AdFSProperties.OutputItem config, String parentHeader, String total) {
+    private String buildHeader(OutputProperties.Item config, String parentHeader, String total) {
         Handler handler = Handler.getHandler(config.type());
         StringBuilder builder = new StringBuilder();
 
