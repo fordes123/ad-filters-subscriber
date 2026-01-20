@@ -9,38 +9,39 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.netty.http.client.HttpClient;
+import reactor.util.retry.Retry;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+
+import static org.fordes.adfs.config.FetcherProperties.HttpProperty;
 
 @Slf4j
 public class HttpFetcher extends Fetcher {
 
     private final WebClient webClient;
-    private Integer connectTimeout = 10_000;
-    private Integer readTimeout = 30_000;
-    private Integer writeTimeout = 30_000;
-    private Integer bufferSize = 4096;
+    private final HttpProperty property;
 
-    public HttpFetcher() {
-
-        HttpClient httpClient = HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, this.connectTimeout) // 连接超时 10 秒
-                .responseTimeout(Duration.ofSeconds(30))              // 响应超时 30 秒
+    public HttpFetcher(HttpProperty property) {
+        this.property = property;
+        final HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) property.connectTimeout().toMillis())
+                .responseTimeout(property.responseTimeout())
                 .doOnConnected(conn -> conn
-                        .addHandlerLast(new ReadTimeoutHandler(this.readTimeout, TimeUnit.MILLISECONDS))   // 读超时
-                        .addHandlerLast(new WriteTimeoutHandler(this.writeTimeout, TimeUnit.MILLISECONDS))  // 写超时
+                        .addHandlerLast(new ReadTimeoutHandler(property.readTimeout().toMillis(), TimeUnit.MILLISECONDS))
+                        .addHandlerLast(new WriteTimeoutHandler(property.writeTimeout().toMillis(), TimeUnit.MILLISECONDS))
                 );
 
-        ExchangeStrategies strategies = ExchangeStrategies.builder()
+        final ExchangeStrategies strategies = ExchangeStrategies.builder()
                 .codecs(configurer -> configurer
                         .defaultCodecs()
-                        .maxInMemorySize(this.bufferSize)
+                        .maxInMemorySize((int) property.bufferSize().toBytes())
                 )
                 .build();
 
@@ -53,13 +54,6 @@ public class HttpFetcher extends Fetcher {
                 .build();
     }
 
-    public HttpFetcher(Integer connectTimeout, Integer readTimeout, Integer writeTimeout, Integer bufferSize) {
-        this();
-        this.connectTimeout = connectTimeout;
-        this.readTimeout = readTimeout;
-        this.writeTimeout = writeTimeout;
-        this.bufferSize = bufferSize;
-    }
 
     @Override
     public Flux<String> fetch(String path) {
@@ -67,6 +61,17 @@ public class HttpFetcher extends Fetcher {
                 .uri(URI.create(path))
                 .retrieve()
                 .bodyToFlux(DataBuffer.class)
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(1))
+                        .filter(t -> {
+                            if (t instanceof IOException) return true;
+                            if (t instanceof WebClientResponseException e) {
+                                return e.getStatusCode().is5xxServerError();
+                            }
+                            return false;
+                        })
+                        .onRetryExhaustedThrow((retryBackoffSpec, retrySignal) -> {
+                            return retrySignal.failure();
+                        }))
                 .onErrorResume(e -> {
                     log.error("http rule => {}, fetch failed  => {}", path, e.getMessage(), e);
                     return Flux.empty();
@@ -77,7 +82,7 @@ public class HttpFetcher extends Fetcher {
 
     @Override
     protected Charset charset() {
-        return StandardCharsets.UTF_8;
+        return this.property.charset();
     }
 
 }

@@ -1,15 +1,15 @@
 package org.fordes.adfs.handler.rule;
 
 import lombok.extern.slf4j.Slf4j;
+import org.fordes.adfs.constant.Constants;
 import org.fordes.adfs.enums.RuleSet;
 import org.fordes.adfs.model.Rule;
 import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.fordes.adfs.constant.Constants.*;
@@ -19,7 +19,7 @@ import static org.fordes.adfs.constant.Constants.*;
  */
 @Slf4j
 @Component
-public final class EasylistHandler extends Handler implements InitializingBean {
+public sealed class EasylistHandler extends Handler implements InitializingBean permits DnsHandler {
 
     @Override
     public Rule parse(String line) {
@@ -28,104 +28,119 @@ public final class EasylistHandler extends Handler implements InitializingBean {
         rule.setSourceType(RuleSet.EASYLIST);
         rule.setMode(Rule.Mode.DENY);
 
+        // @@ 用于例外的标记规则。 如果用户想取消匹配主机名的过滤，请在规则开头添加此标记。
         if (line.startsWith(DOUBLE_AT)) {
             rule.setMode(Rule.Mode.ALLOW);
             line = line.substring(2);
         }
 
-        int _head = 0;
-        if (line.startsWith(Symbol.OR)) {
-            _head = Symbol.OR.length();
+        // ||：匹配主机名的开头，包括任何子域名。 例如，||example.org 匹配 example.org 和 test.example.org，但不匹配 testexample.org。
+        if (line.startsWith(DOUBLE_PIPE)) {
             rule.getControls().add(Rule.Control.OVERLAY);
+            line = line.substring(2);
         }
 
+        if (line.contains(Symbol.DOLLAR)) {
+            int i = line.indexOf(Symbol.DOLLAR);
+            var mod = line.substring(i + 1);
+            line = line.substring(0, i);
 
-        //修饰部分
-        int _tail = line.indexOf(Symbol.CARET);
-        if (_tail > 0) {
-            rule.getControls().add(Rule.Control.QUALIFIER);
-
-            String modify = line.substring(_tail + 1);
-            if (!modify.isEmpty()) {
-                modify = modify.startsWith(Symbol.DOLLAR) ? modify.substring(1) : modify;
-                String[] array = modify.split(Symbol.COMMA);
-                if (Arrays.stream(array).allMatch(IMPORTANT::equals)) {
-                    rule.getControls().add(Rule.Control.IMPORTANT);
-                } else {
-                    rule.setType(Rule.Type.UNKNOWN);
-                    return rule;
-                }
-            }
-        } else if (line.endsWith(Symbol.DOLLAR + IMPORTANT)) {
-            rule.getControls().add(Rule.Control.IMPORTANT);
-            _tail = line.length() - (Symbol.DOLLAR.length() + IMPORTANT.length());
-        }
-
-
-        //内容部分
-        String content = line.substring(_head, _tail > 0 ? _tail : line.length());
-
-        if (content.startsWith(Symbol.SLASH) && content.endsWith(Symbol.SLASH)) {
-            content = content.substring(1, content.length() - 1);
-            rule.setType(Rule.Type.UNKNOWN);
-        }
-
-        //判断是否为基本或通配规则
-        Util.isBaseRule(content, (origin, e) -> {
-            if (rule.getType() == null) {
-                rule.setType(e);
-            }
-            rule.setScope(Rule.Scope.DOMAIN);
-            rule.setTarget(origin);
-            if (Rule.Mode.DENY.equals(rule.getMode())) {
-                rule.setDest(UNKNOWN_IP);
-            }
-        }, e -> {
-            Map.Entry<String, String> entry = Util.parseHosts(e);
-            if (entry != null) {
-                rule.setSourceType(RuleSet.HOSTS);
-                rule.setTarget(entry.getValue());
-                rule.setMode(LOCAL_IPS.contains(entry.getKey()) && !LOCAL_DOMAINS.contains(entry.getValue()) ? Rule.Mode.DENY : Rule.Mode.REWRITE);
-                rule.setDest(Rule.Mode.DENY == rule.getMode() ? UNKNOWN_IP : entry.getKey());
-                rule.setScope(Rule.Scope.DOMAIN);
-                rule.setType(Rule.Type.BASIC);
+            if (Constants.IMPORTANT.equals(mod.trim())) {
+                rule.getControls().add(Rule.Control.IMPORTANT);
+            } else if ("all".equals(mod.trim())) {
+                rule.getControls().add(Rule.Control.ALL);
             } else {
                 rule.setType(Rule.Type.UNKNOWN);
             }
-        });
+        }
+
+        // ^ 分隔符字符
+        // 与浏览器广告拦截不同，主机名中没有什么需要分隔的字符，因此该字符的唯一目的是标记主机名的结尾。
+        if (line.endsWith(Constants.Symbol.CARET)) {
+            rule.getControls().add(Rule.Control.QUALIFIER);
+            line = line.substring(0, line.length() - 1);
+        }
+
+        // 正则规则 /regex/
+        if (line.startsWith(Constants.Symbol.SLASH) && line.endsWith(Constants.Symbol.SLASH) && line.length() > 2) {
+            rule.setType(Rule.Type.REGEX);
+            line = line.substring(1, line.length() - 1);
+        }
+
+        rule.setTarget(line);
+        rule.setScope(Rule.Scope.DOMAIN);
+        if (Rule.Mode.DENY.equals(rule.getMode())) {
+            rule.setDest(UNKNOWN_IP);
+        }
+
+        if (rule.getType() == null) {
+            var t = Optional.ofNullable(Util.isBaseRule(line)).orElse(Rule.Type.UNKNOWN);
+            rule.setType(t);
+        }
+
         return rule;
     }
 
     @Override
     public String format(Rule rule) {
-        if (Rule.Type.UNKNOWN != rule.getType() && Rule.Mode.REWRITE != rule.getMode()) {
 
-            StringBuilder builder = new StringBuilder();
-            Optional.of(rule.getMode())
-                    .filter(Rule.Mode.ALLOW::equals)
-                    .ifPresent(m -> builder.append(DOUBLE_AT));
+        // 同源未知规则直接返回原始内容
+        if (Rule.Type.UNKNOWN == rule.getType()) {
+            if (RuleSet.EASYLIST == rule.getSourceType()) {
+                return rule.getOrigin();
+            }
+            return null;
+        }
 
-            Optional.of(rule.getControls())
-                    .filter(e -> e.contains(Rule.Control.OVERLAY))
-                    .ifPresent(c -> builder.append(Symbol.OR));
+        // 未知规则、重写规则 无法转换
+        if (Rule.Type.UNKNOWN == rule.getType() || rule.getMode() == Rule.Mode.REWRITE) {
+            return null;
+        }
 
+
+        StringBuilder builder = new StringBuilder();
+
+        // 添加模式前缀
+        if (rule.getMode() == Rule.Mode.ALLOW) {
+            builder.append(DOUBLE_AT);
+        }
+
+        Set<Rule.Control> controls = rule.getControls();
+
+        // 添加覆盖标记
+        if (controls.contains(Rule.Control.OVERLAY)) {
+            builder.append(DOUBLE_PIPE);
+        }
+
+        // 添加目标规则
+        if (rule.getType() == Rule.Type.REGEX || rule.getType() == Rule.Type.WILDCARD) {
+            builder.append(Symbol.SLASH)
+                    .append(rule.getTarget())
+                    .append(Symbol.SLASH);
+        } else {
             builder.append(rule.getTarget());
-
-            Optional.of(rule.getControls())
-                    .filter(e -> e.contains(Rule.Control.QUALIFIER))
-                    .ifPresent(c -> builder.append(Symbol.CARET));
-
-            Optional.of(rule.getControls())
-                    .filter(e -> e.contains(Rule.Control.IMPORTANT))
-                    .ifPresent(c -> builder.append(Symbol.DOLLAR).append(IMPORTANT));
-            return builder.toString();
         }
 
-        //同源未知规则可直接写出
-        if (Rule.Type.UNKNOWN == rule.getType() && RuleSet.EASYLIST == rule.getSourceType()) {
-            return rule.getOrigin();
+        // 添加限定符标记
+        if (controls.contains(Rule.Control.QUALIFIER)) {
+            builder.append(Symbol.CARET);
         }
-        return null;
+
+        // 添加优先级标记
+        if (controls.contains(Rule.Control.IMPORTANT)) {
+            builder.append(Symbol.DOLLAR).append(IMPORTANT);
+        }
+
+        if (controls.contains(Rule.Control.ALL)) {
+            int i = builder.indexOf(Symbol.DOLLAR);
+            if (i == -1) {
+                builder.append(Symbol.DOLLAR).append(ALL);
+            } else {
+                builder.append(Symbol.COMMA).append(ALL);
+            }
+        }
+
+        return builder.toString();
     }
 
     @Override

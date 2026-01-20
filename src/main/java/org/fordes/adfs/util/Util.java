@@ -10,8 +10,6 @@ import org.springframework.util.StringUtils;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import static org.fordes.adfs.constant.Constants.*;
 import static org.fordes.adfs.constant.RegConstants.*;
@@ -147,7 +145,7 @@ public class Util {
      */
     public static @Nullable Map.Entry<String, String> parseHosts(String content) {
         if (content.contains(Symbol.TAB)) {
-            content = content.replace(TAB, Symbol.WHITESPACE);
+            content = content.replace(Symbol.TAB, Symbol.WHITESPACE);
         }
         List<String> list = splitIgnoreBlank(content, Symbol.WHITESPACE);
         if (list.size() == 2) {
@@ -198,26 +196,26 @@ public class Util {
     }
 
 
-    public static void isBaseRule(String content, BiConsumer<String, Rule.Type> ifPresent, Consumer<String> orElse) {
+    public static Rule.Type isBaseRule(String content) {
         String temp = content;
         if (temp.contains(Symbol.ASTERISK)) {
             temp = content.replace(Symbol.ASTERISK, Symbol.A);
         }
 
-        if (temp.startsWith(Symbol.DOT)) {
+        while (temp.length() > 0 && temp.startsWith(Symbol.DOT)) {
             temp = temp.substring(1);
         }
 
-        if (temp.endsWith(Symbol.DOT)) {
+        while (temp.length() > 0 && temp.endsWith(Symbol.DOT)) {
             temp = temp.substring(0, temp.length() - 1);
         }
 
         if (PATTERN_DOMAIN.matcher(temp).matches()) {
-            ifPresent.accept(content, content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD);
+            return content.equals(temp) ? Rule.Type.BASIC : Rule.Type.WILDCARD;
         } else if (DOMAIN_PART.matcher(temp).matches()) {
-            ifPresent.accept(content, Rule.Type.WILDCARD);
+            return Rule.Type.WILDCARD;
         } else {
-            orElse.accept(content);
+            return null;
         }
     }
 }

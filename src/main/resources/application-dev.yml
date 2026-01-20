@@ -29,22 +29,16 @@ application:
     files:
       - name: easylist.txt
         type: easylist
-        filter:
-          - basic
-          - wildcard
-          - unknown
 
       - name: dns.txt
-        type: easylist
+        type: dns
         file-header: |
           Test ${total}
-        filter:
-          - basic
-          - wildcard
 
       - name: modify.txt
         type: easylist
         filter:
+          - regex
           - unknown
 
       - name: dnsmasq.conf
@@ -60,8 +54,12 @@ application:
         type: hosts
 
   config:
-    domain-detect:
-      enable: true
-      concurrency: 256
-      provider:
-        - 1.1.1.1
+    parser:
+      dns-probe:
+        enable: true
+        parallel: 16
+        provider:
+          - host: 223.5.5.5
+            port: 53
+
+          - host: 114.114.114.114

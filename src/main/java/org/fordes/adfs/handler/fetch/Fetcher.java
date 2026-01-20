@@ -1,6 +1,7 @@
 package org.fordes.adfs.handler.fetch;
 
 import jakarta.annotation.Nonnull;
+import org.fordes.adfs.config.FetcherProperties;
 import org.fordes.adfs.enums.HandleType;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -10,9 +11,7 @@ import java.nio.charset.Charset;
 
 public abstract class Fetcher {
 
-    protected @Nonnull Charset charset() {
-        return Charset.defaultCharset();
-    }
+    protected abstract @Nonnull Charset charset();
 
     public abstract Flux<String> fetch(@Nonnull String path);
 
@@ -46,12 +45,12 @@ public abstract class Fetcher {
                 }));
     }
 
-    public final static Fetcher getFetcher(HandleType type) {
+    public final static Fetcher getFetcher(HandleType type, FetcherProperties properties) {
         switch (type) {
             case LOCAL:
-                return new LocalFetcher();
+                return new LocalFetcher(properties.local());
             case REMOTE:
-                return new HttpFetcher();
+                return new HttpFetcher(properties.http());
         }
         throw new IllegalArgumentException("unsupported handle type: " + type);
     }

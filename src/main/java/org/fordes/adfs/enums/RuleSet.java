@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 @AllArgsConstructor
 public enum RuleSet {
 
+    DNS,
     EASYLIST,
     DNSMASQ,
     CLASH,

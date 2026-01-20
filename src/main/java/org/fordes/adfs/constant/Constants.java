@@ -13,10 +13,11 @@ public class Constants {
     public static final String UNKNOWN_IP = "0.0.0.0";
     public static final String LOCAL_V6 = "::1";
     public static final String LOCALHOST = "localhost";
-    public static final String DOUBLE_AT = "@@";
+    public static final String DOUBLE_AT = Symbol.AT + Symbol.AT;
+    public static final String DOUBLE_PIPE = Symbol.PIPE + Symbol.PIPE;
     public static final String IMPORTANT = "important";
+    public static final String ALL = "all";
     public static final String DOMAIN = "domain";
-    public static final String TAB = "\t";
     public static final String PAYLOAD = "payload";
 
     public static final String DNSMASQ_HEADER = "address=/";
@@ -51,7 +52,7 @@ public class Constants {
         public static final String SLASH = "/";
         public static final String LEFT_BRACKETS = "[";
         public static final String RIGHT_BRACKETS = "]";
-        public static final String OR = "||";
+        public static final String PIPE = "|";
         public static final String ASTERISK = "*";
         public static final String QUESTION_MARK = "?";
         public static final String A = "a";
