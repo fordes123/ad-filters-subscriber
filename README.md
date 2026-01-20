@@ -30,6 +30,7 @@
 > ⚠️ 新版不再兼容原配置格式，迁移前务必注意
 #### 支持的规则格式
 - [x] easylist
+- [x] dns (AdGuardHome)
 - [x] dnsmasq
 - [x] clash
 - [x] smartdns
@@ -51,7 +52,7 @@ application:
   input:
     - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
       path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)
-      type: easylist                       #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
+      type: easylist                       #可选参数: 规则类型：easylist (默认)、dns、dnsmasq、clash、smartdns、hosts
 
     - name: 'Subscription 2'
       path: 'rule/local.txt'
@@ -69,7 +70,7 @@ application:
       
     files:
       - name: easylist.txt     #必要参数: 文件名
-        type: easylist         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        type: easylist         #必要参数: 文件类型: easylist、dns、dnsmasq、clash、smartdns、hosts
         file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
         desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
         filter:
