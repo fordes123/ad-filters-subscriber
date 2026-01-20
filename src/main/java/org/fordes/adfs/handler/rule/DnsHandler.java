@@ -20,6 +20,9 @@ import static org.fordes.adfs.constant.Constants.*;
 @Slf4j
 @Component
 public final class DnsHandler extends EasylistHandler{
+
+    //TODO 添加对 client、denyallow、dnstype、dnsrewrite、badfilter、ctag 控制符的支持
+
     @Override
     public Rule parse(String line) {
 
@@ -79,7 +82,7 @@ public final class DnsHandler extends EasylistHandler{
         }
 
         // 添加目标规则
-        if (rule.getType() == Rule.Type.REGEX) {
+        if (rule.getType() == Rule.Type.WILDCARD) {
             builder.append(Constants.Symbol.SLASH)
                     .append(rule.getTarget())
                     .append(Constants.Symbol.SLASH);

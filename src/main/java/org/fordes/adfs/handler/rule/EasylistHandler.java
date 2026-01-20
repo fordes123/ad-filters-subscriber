@@ -8,7 +8,6 @@ import org.fordes.adfs.util.Util;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -51,6 +50,7 @@ public sealed class EasylistHandler extends Handler implements InitializingBean 
                 rule.getControls().add(Rule.Control.ALL);
             } else {
                 rule.setType(Rule.Type.UNKNOWN);
+                return rule;
             }
         }
 
@@ -65,31 +65,36 @@ public sealed class EasylistHandler extends Handler implements InitializingBean 
         if (line.startsWith(Constants.Symbol.SLASH) && line.endsWith(Constants.Symbol.SLASH) && line.length() > 2) {
             rule.setType(Rule.Type.REGEX);
             line = line.substring(1, line.length() - 1);
+            rule.setTarget(line);
         }
 
-        rule.setTarget(line);
+        Rule.Type type = Util.decectBaseRule(line);
+        if (type != null) {
+            // BASE、WILDCARD
+            rule.setType(type);
+            rule.setTarget(line);
+            rule.setScope(Rule.Scope.DOMAIN);
+            if (Rule.Mode.DENY.equals(rule.getMode())) {
+                rule.setDest(UNKNOWN_IP);
+            }
+
+        } else if (rule.getType() == null) {
+            rule.setType(Rule.Type.UNKNOWN);
+        }
+
+        // 无法区分UNKNOWN、REGEX 规则的Scope
         rule.setScope(Rule.Scope.DOMAIN);
-        if (Rule.Mode.DENY.equals(rule.getMode())) {
-            rule.setDest(UNKNOWN_IP);
-        }
-
-        if (rule.getType() == null) {
-            var t = Optional.ofNullable(Util.isBaseRule(line)).orElse(Rule.Type.UNKNOWN);
-            rule.setType(t);
-        }
-
         return rule;
     }
 
     @Override
     public String format(Rule rule) {
 
+        //TODO 确认包含 dnsrewrite等控制符规则是否应被收入 easylist
+
         // 同源未知规则直接返回原始内容
-        if (Rule.Type.UNKNOWN == rule.getType()) {
-            if (RuleSet.EASYLIST == rule.getSourceType()) {
-                return rule.getOrigin();
-            }
-            return null;
+        if (Rule.Type.UNKNOWN == rule.getType() && RuleSet.EASYLIST == rule.getSourceType()) {
+            return rule.getOrigin();
         }
 
         // 未知规则、重写规则 无法转换

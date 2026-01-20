@@ -196,17 +196,17 @@ public class Util {
     }
 
 
-    public static Rule.Type isBaseRule(String content) {
+    public static Rule.Type decectBaseRule(String content) {
         String temp = content;
         if (temp.contains(Symbol.ASTERISK)) {
             temp = content.replace(Symbol.ASTERISK, Symbol.A);
         }
 
-        while (temp.length() > 0 && temp.startsWith(Symbol.DOT)) {
+        while (temp.startsWith(Symbol.DOT)) {
             temp = temp.substring(1);
         }
 
-        while (temp.length() > 0 && temp.endsWith(Symbol.DOT)) {
+        while (temp.endsWith(Symbol.DOT)) {
             temp = temp.substring(0, temp.length() - 1);
         }
 
