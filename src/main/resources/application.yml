@@ -6,12 +6,8 @@ spring:
     active: prod
 
 logging:
+  charset:
+    file: UTF-8
+    console: UTF-8
   file:
     path: ./logs
-
-application:
-  input:
-  config:
-    tracking:
-      enable: true
-      path: logs/tracking.list

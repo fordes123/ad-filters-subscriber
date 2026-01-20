@@ -72,24 +72,34 @@ public final class ClashHandler extends Handler implements InitializingBean {
 
     @Override
     public String format(Rule rule) {
+
         if (Rule.Type.UNKNOWN == rule.getType()) {
             if (RuleSet.CLASH == rule.getSourceType()) {
                 return rule.getOrigin();
             }
             return null;
-        } else if (rule.getMode() == Rule.Mode.DENY && rule.getScope() == Rule.Scope.DOMAIN) {
-            StringBuilder builder = new StringBuilder();
-            builder.append(Symbol.WHITESPACE).append(Symbol.WHITESPACE).append(Symbol.DASH).append(Symbol.WHITESPACE).append(Symbol.QUOTE);
-
-            Set<Rule.Control> controls = Optional.ofNullable(rule.getControls()).orElse(Set.of());
-            if (controls.contains(Rule.Control.OVERLAY)) {
-                builder.append(Symbol.ADD).append(Symbol.DOT);
-            }
-            builder.append(rule.getTarget());
-            builder.append(Symbol.QUOTE);
-            return builder.toString();
         }
-        return null;
+
+        return switch (rule.getType()) {
+            case BASIC:
+            case WILDCARD:
+
+                if (rule.getMode() == Rule.Mode.DENY && rule.getScope() == Rule.Scope.DOMAIN) {
+                    StringBuilder builder = new StringBuilder();
+                    builder.append(Symbol.WHITESPACE).append(Symbol.WHITESPACE).append(Symbol.DASH).append(Symbol.WHITESPACE).append(Symbol.QUOTE);
+
+                    Set<Rule.Control> controls = Optional.ofNullable(rule.getControls()).orElse(Set.of());
+                    if (controls.contains(Rule.Control.OVERLAY)) {
+                        builder.append(Symbol.ADD).append(Symbol.DOT);
+                    }
+                    builder.append(rule.getTarget());
+                    builder.append(Symbol.QUOTE);
+                    yield builder.toString();
+                }
+
+            default:
+                yield null;
+        };
     }
 
     @Override
