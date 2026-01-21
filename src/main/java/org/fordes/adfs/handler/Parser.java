@@ -16,7 +16,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.LongAdder;
 
 import static org.fordes.adfs.config.InputProperties.Item;
@@ -26,21 +25,16 @@ import static org.fordes.adfs.config.InputProperties.Item;
 public class Parser {
 
     private final LongOpenHashSet hashSet;
-    private final Set<String> excludes;
-    private final int alertLength;
-    private final int dnsParallel;
+    private final ParserProperties parserProperties;
     private final FetcherProperties fetcherProperties;
     protected final Optional<DnsProber> dnsProber;
 
-    public Parser(ParserProperties properties, FetcherProperties fetcherProperties, Optional<DnsProber> dnsProber) {
+    public Parser(ParserProperties parserProperties, FetcherProperties fetcherProperties, Optional<DnsProber> dnsProber) {
 
+        this.parserProperties = parserProperties;
         this.fetcherProperties = fetcherProperties;
         this.dnsProber = dnsProber;
-
-        this.hashSet = new LongOpenHashSet(properties.expected());
-        this.excludes = properties.excludes();
-        this.alertLength = properties.alertLength();
-        this.dnsParallel = properties.dnsProbe().parallel();
+        this.hashSet = new LongOpenHashSet(parserProperties.expected());
     }
 
     public Flux<Rule> handle(Item prop) {
@@ -73,6 +67,16 @@ public class Parser {
                         return Mono.empty();
                     }
 
+                    if (parserProperties.minLength() > 0 && line.length() < parserProperties.minLength()) {
+                        log.warn("[{}] rule too short: {}", prop.name(), line);
+                        return Mono.empty();
+                    }
+
+                    if (parserProperties.maxLength() > 0 && line.length() > parserProperties.maxLength()) {
+                        log.warn("[{}] rule too long: {}", prop.name(), line);
+                        return Mono.empty();
+                    }
+
                     Rule rule = handler.parse(line);
                     total.increment();
                     if (Rule.EMPTY.equals(rule)) {
@@ -86,12 +90,12 @@ public class Parser {
                 })
                 .flatMap(e -> {
 
-                    if (e.getTarget() != null && excludes.contains(e.getTarget())) {
+                    if (e.getTarget() != null && parserProperties.excludes().contains(e.getTarget())) {
                         log.info("[{}] excluded: {}", prop.name(), e.getOrigin());
                         return Mono.empty();
                     }
 
-                    if (e.getOrigin().length() <= this.alertLength) {
+                    if (e.getOrigin().length() <= parserProperties.alertLength()) {
                         log.warn("[{}] suspicious rule => {}", prop.name(), e.getOrigin());
                     }
 
@@ -127,7 +131,7 @@ public class Parser {
                         return Mono.just(rule);
                     }).orElse(Mono.just(rule));
 
-                }, dnsParallel)
+                }, parserProperties.dnsProbe().parallel())
                 .flatMap(e -> {
 
                     long hash = e.murmur3Hash();

@@ -23,6 +23,7 @@ public record ParserProperties(
         @Pattern(regexp = "^(trace|debug|info|warn|error|fatal)$")
         String logLevel,
 
+        @Deprecated
         @DefaultValue("6")
         @Min(1)
         @Max(Integer.MAX_VALUE)
@@ -37,7 +38,15 @@ public record ParserProperties(
         Set<@NotBlank String> excludes,
 
         @DefaultValue({})
-        DNSProbe dnsProbe
+        DNSProbe dnsProbe,
+
+        @PositiveOrZero
+        @DefaultValue("0")
+        Integer minLength,
+
+        @PositiveOrZero
+        @DefaultValue("1024")
+        Integer maxLength
 ) {
 
 
