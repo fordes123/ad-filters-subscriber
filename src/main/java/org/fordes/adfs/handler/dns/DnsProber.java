@@ -1,7 +1,8 @@
 package org.fordes.adfs.handler.dns;
 
 import io.netty.channel.EventLoop;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.codec.dns.DnsRecord;
 import io.netty.resolver.ResolvedAddressTypes;
@@ -19,7 +20,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -35,17 +35,19 @@ import static org.fordes.adfs.config.ParserProperties.DnsProvide;
 @ConditionalOnProperty(prefix = "application.config.parser.dns-probe", name = "enable", havingValue = "true")
 public class DnsProber {
 
-    private final NioEventLoopGroup group;
+    private final MultiThreadIoEventLoopGroup group;
     private final List<DnsNameResolver> resolvers;
     private final AtomicLong nextIndex;
     private final LongAdder cacheHits;
+    private final int cpu = Runtime.getRuntime().availableProcessors();
 
     public DnsProber(ParserProperties properties) {
         var config = properties.dnsProbe();
-        int parallel = config.parallel();
 
-        this.group = new NioEventLoopGroup(parallel);
-        this.resolvers = new ArrayList<>(parallel);
+        int threadNum = Runtime.getRuntime().availableProcessors();
+        int resolverNum = Math.min(4, threadNum);
+
+        this.group = new MultiThreadIoEventLoopGroup(threadNum, NioIoHandler.newFactory());
         this.nextIndex = new AtomicLong(0);
         this.cacheHits = new LongAdder();
 
@@ -54,7 +56,7 @@ public class DnsProber {
         DnsServerAddressStreamProvider provider = buildProvider(config.provider());
         DnsCache sharedCache = this.buildDnsCache(config.cacheTtlMin(), config.cacheTtlMax(), config.cacheNegativeTtl());
         DnsCnameCache sharedCnameCache = new DefaultDnsCnameCache((int) config.cacheTtlMin().toSeconds(), (int) config.cacheTtlMax().toSeconds());
-        IntStream.range(0, parallel).forEach(i -> {
+        this.resolvers = IntStream.range(0, resolverNum).mapToObj(i -> {
             EventLoop loop = group.next();
             DnsNameResolver resolver = new DnsNameResolverBuilder(loop)
                     .datagramChannelFactory(NioDatagramChannel::new)
@@ -66,10 +68,10 @@ public class DnsProber {
                     .cnameCache(sharedCnameCache)
                     .optResourceEnabled(false)
                     .build();
-            resolvers.add(resolver);
-        });
+            return resolver;
+        }).toList();
 
-        log.info("dns detector init success, concurrency:{}", parallel);
+        log.info("dns detector init success, thread: {} parallel: {}", cpu, threadNum);
     }
 
     private DnsServerAddressStreamProvider buildProvider(Collection<DnsProvide> provider) {
@@ -138,7 +140,7 @@ public class DnsProber {
     @PreDestroy
     public void destroy() {
         try {
-            log.info("dns detector shutdown, total queries:{}, cache hits:{}", nextIndex.get(), cacheHits.sum());
+            log.info("dns detector shutdown, total queries:{}, cache hits: {}", nextIndex.get(), cacheHits.sum());
 
             resolvers.forEach(DnsNameResolver::close);
             group.shutdownGracefully().await(10, TimeUnit.SECONDS);
