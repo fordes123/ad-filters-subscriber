@@ -34,12 +34,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.head_ref }}
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -55,7 +55,7 @@ jobs:
         run:  mvn spring-boot:run -Dspring-boot.run.profiles=${{ steps.defaults.outputs.profile }}
 
       - name: Upload parser log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: parser.log
           path: logs/parser.log
@@ -75,7 +75,7 @@ jobs:
       - name: Commit Changes
         id: commit
         if: steps.defaults.outputs.release-branch != ''
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'chore: ✅ auto release at ${{ steps.date.outputs.date }}'
           branch: ${{ steps.defaults.outputs.release-branch }}
