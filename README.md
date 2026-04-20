@@ -83,7 +83,7 @@ application:
 ```
 
 ---
-本程序基于 `Java21` 编写，使用 `Maven` 进行构建，你可以参照[示例配置](./config/application-example.yaml)，编辑 `config/application.yaml`
+本程序基于 `Java25` 编写，使用 `Maven` 进行构建，你可以参照[示例配置](./config/application-example.yaml)，编辑 `config/application.yaml`
 ，并通过以下任意一种方式快速开始：
 
 #### **本地调试**
