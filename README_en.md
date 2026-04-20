@@ -91,7 +91,7 @@ application:
 ```
 
 ---
-This program is written in `Java 21` and built using `Maven`. You can refer to the [example configuration](./config/application-example.yaml),
+This program is written in `Java 25` and built using `Maven`. You can refer to the [example configuration](./config/application-example.yaml),
 edit `config/application.yaml`, and quickly get started using any of the following methods:
 
 #### **Local Debugging**

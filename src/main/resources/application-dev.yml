@@ -1,6 +1,6 @@
 logging:
   level:
-    org.fordes.adfs: info
+    org.fordes.adfs: debug
 
 application:
 
