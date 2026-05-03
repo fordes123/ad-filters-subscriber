@@ -1,2 +1,159 @@
 # 参考 `application-example.yaml` 并在处添加订阅规则，请注意缩进
 # Refer to `application-example.yaml` and add subscription rules there，please note the indentation
+
+application:
+
+  input:
+
+    - name: AdGuard Cookie通知过滤器
+      path: https://filters.adtidy.org/android/filters/18_optimized.txt
+      type: easylist
+
+    - name: AdGuard 弹窗过滤器
+      path: https://filters.adtidy.org/android/filters/19_optimized.txt
+      type: easylist
+
+    - name: AdGuard 移动拦截程序横幅广告的过滤器
+      path: https://filters.adtidy.org/android/filters/20_optimized.txt
+      type: easylist
+
+    - name: AdGuard 其他恼人广告过滤器
+      path: https://filters.adtidy.org/android/filters/21_optimized.txt
+      type: easylist
+
+    - name: AdGuard 恼人广告过滤器
+      path: https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_14_Annoyances/filter.txt
+      type: easylist
+
+    - name: Online Malicious URL Blocklist
+      path: https://urlhaus-filter.pages.dev/urlhaus-filter-ag-online.txt
+      type: easylist
+
+    - name: AdGuard 小工具过滤器
+      path: https://filters.adtidy.org/android/filters/22_optimized.txt
+      type: easylist
+
+    - name: ABP 反广告过滤
+      path: https://easylist-downloads.adblockplus.org/abp-filters-anti-cv.txt
+
+    - name: xndeye adblock list of easylist
+      path: https://raw.githubusercontent.com/xndeye/adblock_list/refs/heads/release/easylist.txt
+   
+    - name: TT拒绝列表
+      path: https://ghproxy.net/https://raw.githubusercontent.com/TTDNS/Cat/refs/heads/main/TT%E6%8B%92%E7%BB%9D%E5%88%97%E8%A1%A8%E6%B8%85%E5%8D%95%20(%E6%9B%B4%E6%96%B0%E4%B8%AD).txt
+  
+    - name: AdGuard Tracking Protection filter (Optimized)
+      path: https://filters.adtidy.org/android/filters/3_optimized.txt
+      type: easylist
+ 
+    - name: Bypass Paywalls Clean filter
+      path: https://gitflic.ru/project/magnolia1234/bypass-paywalls-clean-filters/blob/raw?file=bpc-paywall-filter.txt
+
+    - name: 晴雅广告拦截规则重置版支持IOS
+      path: http://rssv.cn/adguard/api.php?type=black
+      
+    - name: HyperADRules
+      path: https://raw.githubusercontent.com/Lynricsy/HyperADRules/master/rules.txt
+
+    - name: DD-AD
+      path: https://raw.githubusercontent.com/afwfv/DD-AD/refs/heads/release/DD-AD.txt
+
+    - name: 去广告规则，酷安反馈反馈
+      path: https://raw.githubusercontent.com/qq5460168/666/refs/heads/master/rules.txt
+        
+    - name: AdRules 橘猫
+      path: https://adrules.5iclub.us.kg/adblock.txt
+    
+    - name: NEO DEV HOST
+      path: https://raw.githubusercontent.com/neodevpro/neodevhost/master/adblocker
+
+    - name: jiekouAD
+      path: https://raw.githubusercontent.com/damengzhu/banad/main/jiekouAD.txt
+
+    - name: DNS-Kuner
+      path: https://raw.githubusercontent.com/Kuner-mw/DNS-Kuner/main/FilterRules/blacklist.txt 
+        
+    - name: 去广告规则，反馈🐧群请点击主页
+      path: https://raw.githubusercontent.com/qq5460168/dangchu/main/black.txt
+
+    - name: SM广告丟那吗hosts
+      path: https://raw.githubusercontent.com/2Gardon/SM-Ad-FuckU-hosts/refs/heads/master/SMAdHosts
+ 
+    - name: HaGeZi's Pro DNS Blocklist
+      path: https://raw.githubusercontent.com/hagezi/dns-blocklists/refs/heads/main/adblock/pro.txt
+
+    - name: 1Hosts (Lite)
+      path: https://raw.githubusercontent.com/badmojr/1Hosts/refs/heads/master/Lite/adblock.txt
+        
+    - name: JiuYue_Rules
+      path: https://rules.vlo.cc/dns/dns.txt    
+
+    - name: DNS-Kuner Allow
+      path: https://raw.githubusercontent.com/Kuner-mw/DNS-Kuner/main/FilterRules/allowlist.txt
+      
+    - name: AdguardFilter标准
+      path: https://raw.githubusercontent.com/miaoermua/AdguardFilter/main/rule.txt
+
+    - name: AdguardFilter黑名单
+      path: https://raw.githubusercontent.com/miaoermua/AdguardFilter/main/bad_apple.txt
+        
+    - name: AdguardFilter白名单
+      path: https://raw.githubusercontent.com/miaoermua/AdguardFilter/main/whitelist.txt
+        
+  output:
+    file_header: |
+      Title: wiz adblock list of ${type}
+      Total Size: ${total}
+      Last Modified: ${date}
+      Homepage: https://github.com/ALLOVERleng/ad-filters-subscriber
+
+    files:
+      - name: easylist.txt
+        type: easylist
+
+      - name: dns.txt
+        type: dns
+
+      - name: modify.txt
+        type: easylist
+        filter:
+          - unknown
+
+      - name: dnsmasq.conf
+        type: dnsmasq
+
+      - name: clash.yaml
+        type: clash
+
+      - name: smartdns.conf
+        type: smartdns
+
+      - name: hosts
+        type: hosts
+
+  config:
+
+    parser:
+      log-level: debug
+      alert-length: 6
+      expected: 200000
+
+      dns-probe:
+        enable: true
+        parallel: 128
+        provider:
+          - host: 1.1.1.1
+            port: 53
+
+          - host: 8.8.8.8
+            port: 53
+
+      excludes:
+        - "edge.microsoft.com"
+        - "public.gensparkspace.com"
+        - "assets.msn.com"
+#        - "metok.sys.miui.com"
+# 参考 `application-example.yaml` 并在处添加订阅规则，请注意缩进
+# Refer to `application-example.yaml` and add subscription rules there，please note the indentation
+# 参考 `application-example.yaml` 并在处添加订阅规则，请注意缩进
+# Refer to `application-example.yaml` and add subscription rules there，please note the indentation
