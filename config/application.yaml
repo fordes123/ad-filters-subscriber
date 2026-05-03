@@ -29,6 +29,7 @@ application:
     - name: AdGuard 小工具过滤器
       path: https://filters.adtidy.org/android/filters/22_optimized.txt
       type: easylist
+    
     - name: ABP 反广告过滤
       path: https://easylist-downloads.adblockplus.org/abp-filters-anti-cv.txt
 
@@ -146,7 +147,7 @@ application:
 
       # 日志级别
       # 解析器日志将单独输出到 parser.log 文件
-      log-level: trace
+      log-level: debug
 
       # 建议最小规则长度
       # 一般来说越短的规则杀伤力越大，当超出此长度时，解析器会输出警告日志
@@ -163,22 +164,15 @@ application:
       # 建议留空或设置一个保守值，不可过大
       expected: 200000
 
-      # 域名探测
-      # 当启用此项时，解析器将尝试通过 DNS 解析来判断规则是否有效
-      # ! 此功能将导致处理时间大幅延长
       dns-probe:
-        enable: true   # 是否启用
-        timeout: 2s   # 查询超时
+        enable: ture   # 是否启用
         parallel: 128    # 并发查询数
-        cache-ttl-min: 600s            # 缓存最小TTL
-        cache-ttl-max: 86400s          # 缓存最大TTL
-        cache-negative-ttl: 300s       # 失败结果缓存TTL
-        # 使用的 DNS 服务器
+
         # 多个之间具备优先级，为空则使用系统默认DNS
         provider:
           - host: 1.1.1.1
-            port: 53 # port 可以省略，默认为 53
-
+            port: 53 
+          
           - host: 8.8.8.8
 
       # 排除域 (白名单)
