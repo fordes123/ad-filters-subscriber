@@ -1,4 +1,129 @@
+##########################################
+## !!! 示例配置，修改无效 !!!
+## !!! example config, modify invalid !!!
+##########################################
 application:
+
+  # 规则源配置
+  # ！使用前请删除下方示例配置, 注意缩进
+  input:
+
+    - name: 'Subscription 1'               #必要参数: 规则名称，请勿重复
+      path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)
+      type: easylist                       #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
+
+    - name: 'Subscription 2'
+      path: 'rule/local.txt'
+      type: hosts
+
+  #输出配置
+  output:
+    #文件头配置，将自动作为注释添加至每个规则文件开始
+    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)、${total} (规则总数)
+    file_header: |
+      ADFS AdBlock ${type}
+      Last Modified: ${date}
+      Total Size: ${total}
+      Homepage: https://github.com/fordes123/ad-filters-subscriber/
+
+    #输出规则文件列表 （！注意缩进，且每个类型只能输出一个文件）
+    files:
+      - name: easylist.txt     #必要参数: 文件名
+        type: easylist         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
+        file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
+        desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
+        filter:
+          - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts
+          - wildcard           #通配规则，仅使用通配符
+          - unknown            #其他规则，如使用了正则、高级修饰符号的规则，这些规则目前无法转换为其他格式
+
+        rule:                  #可选参数: 限定此文件使用的规则源，如果不指定则使用 input 中的所有规则源
+          - Subscription 1
+          - Subscription 2
+
+      - name: dns.txt
+        type: easylist
+        filter:
+          - basic
+          - wildcard
+
+      - name: dnsmasq.txt
+        type: dnsmasq
+
+      - name: clash.yaml
+        type: clash
+
+      - name: smartdns.txt
+        type: smartdns
+
+      - name: hosts.txt
+        type: hosts
+
+
+  # 程序运行配置（可选）
+  # ！删除即使用默认配置
+  config:
+
+    #获取器配置
+    fetcher:
+
+      http:
+        charset: UTF-8
+        connect-timeout: 10s
+        read-timeout: 30s
+        write-timeout: 30s
+        response-timeout: 30s
+        buffer-size: 4KB
+
+      local:
+        charset: UTF-8
+        buffer-size: 4KB
+
+    #解析器配置
+    parser:
+
+      # 日志级别
+      # 解析器日志将单独输出到 parser.log 文件
+      log-level: trace
+
+      # 建议最小规则长度
+      # 一般来说越短的规则杀伤力越大，当超出此长度时，解析器会输出警告日志
+      alert-length: 6
+
+      # 解析器接受的最小规则长度，小于此长度的规则将被认定为无效规则 (0或空为不限制)
+      min-length: 0
+
+      # 解析器接受的最大规则长度，大于此长度的规则将被认定为无效规则 (0或空为不限制)
+      max-length: 1024  # 默认为 1024 这也是 AdGuard 所支持的最大长度
+
+      # 预期总规则数量
+      # 此选项有助于提前分配内存以提高去重性能
+      # 建议留空或设置一个保守值，不可过大
+      expected: 200000
+
+      # 域名探测
+      # 当启用此项时，解析器将尝试通过 DNS 解析来判断规则是否有效
+      # ! 此功能将导致处理时间大幅延长
+      dns-probe:
+        enable: false   # 是否启用
+        timeout: 2s   # 查询超时
+        parallel: 10    # 并发查询数
+        cache-ttl-min: 600s            # 缓存最小TTL
+        cache-ttl-max: 86400s          # 缓存最大TTL
+        cache-negative-ttl: 300s       # 失败结果缓存TTL
+        # 使用的 DNS 服务器
+        # 多个之间具备优先级，为空则使用系统默认DNS
+        provider:
+          - host: 223.5.5.5
+            port: 53 # port 可以省略，默认为 53
+
+          - host: 114.114.114.114
+
+      # 排除域 (白名单)
+      # 若规则目标域名在此列表中，则直接排除
+      # ! 只适用可以被解析的规则
+      excludes:
+        - "www.example.org"application:
 
   input:
 
