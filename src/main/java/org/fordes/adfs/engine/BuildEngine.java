@@ -1,7 +1,6 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
-import org.fordes.adfs.console.ConsoleReporter;
 import org.fordes.adfs.model.CanonicalRule;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.preprocess.AdblockPreprocessor;
@@ -13,21 +12,18 @@ import org.fordes.adfs.source.StreamingLineReader;
 import org.fordes.adfs.syntax.LineSlice;
 import org.fordes.adfs.syntax.RuleFormat;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -35,30 +31,24 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 public final class BuildEngine {
 
     private static final int RULE_BATCH_SIZE = 1_024;
     private static final long MEBIBYTE = 1024L * 1024L;
-    private static final Path CONVERSION_LOG = Path.of("conversion.log").toAbsolutePath().normalize();
-
     private final RuleParser parser;
     private final RuleEncoder encoder;
     private final SingBoxStreamingDecoder singBoxDecoder;
-    private final ConsoleReporter reporter;
 
-    public BuildEngine(ConsoleReporter reporter) {
+    public BuildEngine() {
         this.parser = new RuleParser();
         this.encoder = new RuleEncoder();
         this.singBoxDecoder = new SingBoxStreamingDecoder();
-        this.reporter = Objects.requireNonNull(reporter, "reporter 不能为空");
     }
 
     public BuildReport build(BuildPlan plan) throws IOException, InterruptedException {
         Objects.requireNonNull(plan, "plan 不能为空");
-        if (plan.outputs().stream().anyMatch(output -> output.path().equals(CONVERSION_LOG))) {
-            throw new IllegalArgumentException("输出文件不能使用保留路径: " + CONVERSION_LOG);
-        }
         long startedAt = System.nanoTime();
         try (BuildWorkspace workspace = BuildWorkspace.create()) {
             List<BuildPlan.SourceSpec> orderedSources = plan.sources().stream()
@@ -73,8 +63,7 @@ public final class BuildEngine {
             ).validate(sourceStages);
             List<OutputPipeline.Staged> stagedOutputs = stageOutputs(plan, sourceStages, workspace);
             try {
-                DeploymentFile stagedLog = stageConversionLog(stagedOutputs);
-                deployArtifacts(stagedOutputs, stagedLog);
+                deployArtifacts(stagedOutputs);
             } catch (IOException error) {
                 cleanupPaths(
                         stagedOutputs.stream().map(OutputPipeline.Staged::temporaryPath).toList(),
@@ -85,7 +74,6 @@ public final class BuildEngine {
             return new BuildReport(
                     sourceStages.stream().map(SourceStage::report).toList(),
                     stagedOutputs.stream().map(OutputPipeline.Staged::report).toList(),
-                    CONVERSION_LOG,
                     Duration.ofNanos(System.nanoTime() - startedAt)
             );
         }
@@ -96,7 +84,7 @@ public final class BuildEngine {
             List<BuildPlan.SourceSpec> sources,
             BuildWorkspace workspace
     ) throws IOException, InterruptedException {
-        SourceOpener opener = new SourceOpener(plan.sourceLoading(), reporter);
+        SourceOpener opener = new SourceOpener(plan.sourceLoading());
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<SourceStage>> futures = new ArrayList<>(sources.size());
             for (BuildPlan.SourceSpec source : sources) {
@@ -252,6 +240,8 @@ public final class BuildEngine {
         java.util.concurrent.ConcurrentLinkedQueue<Path> temporaryPaths =
                 new java.util.concurrent.ConcurrentLinkedQueue<>();
         long memoryBudget = dedupMemoryBudget(plan.outputs().size());
+        Map<String, BuildPlan.SourceSpec> sourcesById = plan.sources().stream()
+                .collect(Collectors.toUnmodifiableMap(BuildPlan.SourceSpec::id, source -> source));
         List<OutputPipeline> workers = new ArrayList<>(plan.outputs().size());
         for (int index = 0; index < plan.outputs().size(); index++) {
             workers.add(new OutputPipeline(
@@ -259,9 +249,9 @@ public final class BuildEngine {
                     plan.outputs().get(index),
                     workspace,
                     encoder,
-                    workspace.createFile("audit", "-" + index + ".log"),
                     temporaryPaths,
                     workerFailure,
+                    sourcesById,
                     memoryBudget
             ));
         }
@@ -325,39 +315,11 @@ public final class BuildEngine {
         throwWorkerFailure(workerFailure);
     }
 
-    private DeploymentFile stageConversionLog(List<OutputPipeline.Staged> stagedOutputs)
-            throws IOException {
-        Path parent = CONVERSION_LOG.getParent();
-        Path temporary = Files.createTempFile(parent, "parser-log.", ".tmp");
-        try (OutputStream output = new BufferedOutputStream(
-                Files.newOutputStream(temporary, StandardOpenOption.TRUNCATE_EXISTING), 256 * 1024)) {
-            for (OutputPipeline.Staged staged : stagedOutputs) {
-                try (var input = new BufferedInputStream(
-                        Files.newInputStream(staged.logSegment()), 256 * 1024)) {
-                    input.transferTo(output);
-                }
-            }
-        } catch (IOException error) {
-            try {
-                Files.deleteIfExists(temporary);
-            } catch (IOException cleanupError) {
-                error.addSuppressed(cleanupError);
-            }
-            throw error;
-        }
-        return new DeploymentFile(temporary, CONVERSION_LOG);
-    }
-
-    private void deployArtifacts(
-            List<OutputPipeline.Staged> stagedOutputs,
-            DeploymentFile stagedLog
-    )
-            throws IOException {
-        List<DeploymentFile> files = new ArrayList<>(stagedOutputs.size() + 1);
+    private void deployArtifacts(List<OutputPipeline.Staged> stagedOutputs) throws IOException {
+        List<DeploymentFile> files = new ArrayList<>(stagedOutputs.size());
         for (OutputPipeline.Staged output : stagedOutputs) {
             files.add(new DeploymentFile(output.temporaryPath(), output.report().path()));
         }
-        files.add(stagedLog);
         try {
             for (DeploymentFile file : files) {
                 Files.move(file.temporary(), file.target(), StandardCopyOption.ATOMIC_MOVE,
@@ -406,15 +368,12 @@ public final class BuildEngine {
             throws IOException, InterruptedException {
         Throwable cause = error.getCause();
         if (cause instanceof IOException ioError) {
-            throw ioError;
+            throw new IOException(operation, ioError);
         }
         if (cause instanceof InterruptedException interrupted) {
             throw interrupted;
         }
-        if (cause instanceof RuntimeException runtime) {
-            throw runtime;
-        }
-        throw new IOException(operation + ": " + cause.getMessage(), cause);
+        throw new IOException(operation, cause);
     }
 
     private static void throwWorkerFailure(AtomicReference<Throwable> workerFailure)
@@ -424,15 +383,12 @@ public final class BuildEngine {
             return;
         }
         if (cause instanceof IOException ioError) {
-            throw ioError;
+            throw new IOException("输出工作线程失败", ioError);
         }
         if (cause instanceof InterruptedException interrupted) {
             throw interrupted;
         }
-        if (cause instanceof RuntimeException runtime) {
-            throw runtime;
-        }
-        throw new IOException("输出工作线程失败: " + cause.getMessage(), cause);
+        throw new IOException("输出工作线程失败", cause);
     }
 
     private static void cleanupPaths(Iterable<Path> paths, Throwable primaryError) {
@@ -497,14 +453,12 @@ public final class BuildEngine {
     public record BuildReport(
             List<SourceReport> sources,
             List<OutputReport> outputs,
-            Path trackLog,
             Duration elapsed
     ) {
 
         public BuildReport {
             sources = List.copyOf(sources);
             outputs = List.copyOf(outputs);
-            Objects.requireNonNull(trackLog, "trackLog 不能为空");
             Objects.requireNonNull(elapsed, "elapsed 不能为空");
         }
 

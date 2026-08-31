@@ -1,15 +1,11 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
-import org.fordes.adfs.console.ConsoleReporter;
 import org.fordes.adfs.syntax.RuleFormat;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
 import org.fordes.adfs.syntax.clash.ClashDialect;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.io.IOException;
 import java.io.DataInputStream;
@@ -37,30 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ResourceLock("conversion.log")
 final class DnsValidationIntegrationTest {
-
-    private static final Path CONVERSION_LOG = Path.of("conversion.log").toAbsolutePath();
-    private static Optional<byte[]> originalConversionLog;
 
     @TempDir
     private Path tempDirectory;
-
-    @BeforeAll
-    static void preserveParserLog() throws Exception {
-        originalConversionLog = Files.exists(CONVERSION_LOG)
-                ? Optional.of(Files.readAllBytes(CONVERSION_LOG))
-                : Optional.empty();
-    }
-
-    @AfterAll
-    static void restoreParserLog() throws Exception {
-        if (originalConversionLog.isPresent()) {
-            Files.write(CONVERSION_LOG, originalConversionLog.orElseThrow());
-        } else {
-            Files.deleteIfExists(CONVERSION_LOG);
-        }
-    }
 
     @Test
     void distinguishesExistingAndNxDomainResponses() throws Exception {
@@ -114,10 +90,10 @@ final class DnsValidationIntegrationTest {
                     fetchPolicy(),
                     new BuildPlan.ProcessingPolicy(
                             0, 0, Set.of(), true, false, dnsPolicy(server.port())),
-                    new BuildPlan.LoggingPolicy(false)
+                    BuildPlan.LoggingPolicy.defaults()
             );
 
-            BuildEngine.BuildReport report = new BuildEngine(ConsoleReporter.silent()).build(plan);
+            BuildEngine.BuildReport report = new BuildEngine().build(plan);
             String output = Files.readString(outputPath, StandardCharsets.UTF_8);
 
             assertTrue(output.contains("exists.test-domain.com"));
@@ -159,10 +135,10 @@ final class DnsValidationIntegrationTest {
                     fetchPolicy(),
                     new BuildPlan.ProcessingPolicy(
                             0, 0, Set.of(), true, false, dnsPolicy(server.port(), 4)),
-                    new BuildPlan.LoggingPolicy(false)
+                    BuildPlan.LoggingPolicy.defaults()
             );
 
-            BuildEngine.BuildReport report = new BuildEngine(ConsoleReporter.silent()).build(plan);
+            BuildEngine.BuildReport report = new BuildEngine().build(plan);
 
             assertEquals(4, server.maxPending());
             assertEquals(4, report.sources().getFirst().parsed());

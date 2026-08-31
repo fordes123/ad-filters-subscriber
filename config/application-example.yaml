@@ -105,7 +105,7 @@ application:
 
     dns-validation:
       # 启用后，仅探测可确定域名的 BLOCK 规则。
-      # 仅有有效 NXDOMAIN 会删除规则；超时或服务器错误会使构建失败。
+      # 仅有有效 NXDOMAIN 会删除规则；DNS 验证失败时保留全部原始规则并继续构建。
       enabled: false
       # enabled=true 时必填；只能配置一个 DNS 服务器。
       server: 1.1.1.1
@@ -115,8 +115,6 @@ application:
       # 同时在途的查询上限，取值范围 1..1024。
       concurrency: 128
 
-  # 转换日志配置可整体省略。
   logging:
-    # 是否将成功转换的逐规则记录写入 conversion.log；默认 false。
-    # 失败记录始终写入。
-    include-successful-conversions: false
+    # 可选值：trace、debug、info、warn、error、off；默认 info。
+    level: info

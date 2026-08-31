@@ -31,21 +31,23 @@ public record AdblockExtendedRule(
     }
 
     public enum Syntax {
-        COSMETIC(false),
-        ADGUARD_EXTENDED_COSMETIC(false),
-        CSS_INJECTION(false),
-        UBO_SCRIPTLET(true),
-        ADGUARD_SCRIPTLET(true),
-        ABP_SNIPPET(true),
-        UBO_HTML(false),
-        ADGUARD_HTML(false),
-        ADGUARD_JAVASCRIPT(false),
-        DIALECT_SPECIFIC_EXTENSION(false),
-        OPAQUE(false);
+        COSMETIC("cosmetic", false),
+        ADGUARD_EXTENDED_COSMETIC("adguard-extended-cosmetic", false),
+        CSS_INJECTION("css-injection", false),
+        UBO_SCRIPTLET("ubo-scriptlet", true),
+        ADGUARD_SCRIPTLET("adguard-scriptlet", true),
+        ABP_SNIPPET("abp-snippet", true),
+        UBO_HTML("ubo-html", false),
+        ADGUARD_HTML("adguard-html", false),
+        ADGUARD_JAVASCRIPT("adguard-javascript", false),
+        DIALECT_SPECIFIC_EXTENSION("dialect-specific-extension", false),
+        OPAQUE("opaque", false);
 
+        public final String name;
         private final boolean scriptlet;
 
-        Syntax(boolean scriptlet) {
+        Syntax(String name, boolean scriptlet) {
+            this.name = name;
             this.scriptlet = scriptlet;
         }
 
@@ -55,7 +57,13 @@ public record AdblockExtendedRule(
     }
 
     public enum Action {
-        APPLY,
-        EXCEPT
+        APPLY("apply"),
+        EXCEPT("except");
+
+        public final String name;
+
+        Action(String name) {
+            this.name = name;
+        }
     }
 }

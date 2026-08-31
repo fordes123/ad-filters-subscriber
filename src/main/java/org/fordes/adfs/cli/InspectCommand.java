@@ -66,19 +66,19 @@ public final class InspectCommand implements Callable<Integer> {
             case NetworkRuleAst network -> printNetwork(network);
             case CosmeticRuleAst cosmetic -> printExtended(
                     "COSMETIC", cosmetic.source(), cosmetic.dialect(), cosmetic.action(),
-                    cosmetic.syntax().name(), cosmetic.nonBasicModifiers(), cosmetic.domains(),
+                    cosmetic.syntax().name, cosmetic.nonBasicModifiers(), cosmetic.domains(),
                     cosmetic.separator(), cosmetic.body());
             case ScriptletRuleAst scriptlet -> printExtended(
                     "SCRIPTLET", scriptlet.source(), scriptlet.dialect(), scriptlet.action(),
-                    scriptlet.syntax().name(), scriptlet.nonBasicModifiers(), scriptlet.domains(),
+                    scriptlet.syntax().name, scriptlet.nonBasicModifiers(), scriptlet.domains(),
                     scriptlet.separator(), scriptlet.body());
             case HtmlFilterAst html -> printExtended(
                     "HTML_FILTER", html.source(), html.dialect(), html.action(),
-                    html.syntax().name(), html.nonBasicModifiers(), html.domains(),
+                    html.syntax().name, html.nonBasicModifiers(), html.domains(),
                     html.separator(), html.body());
             case ExtensionAst extension -> printExtended(
                     "EXTENSION", extension.source(), extension.dialect(), extension.action(),
-                    extension.kind().name(), extension.nonBasicModifiers(), extension.domains(),
+                    extension.kind().name, extension.nonBasicModifiers(), extension.domains(),
                     extension.separator(), extension.body());
             case CommentAst comment -> printSimple(
                     "COMMENT", comment.source(), comment.dialect(), "body", comment.body());
@@ -92,9 +92,9 @@ public final class InspectCommand implements Callable<Integer> {
 
     private void printNetwork(NetworkRuleAst ast) {
         PrintWriter out = spec.commandLine().getOut();
-        printHeader(out, "NETWORK", ast.dialect().name());
-        out.println("action=" + ast.action());
-        out.println("left-anchor=" + ast.leftAnchor());
+        printHeader(out, "NETWORK", ast.dialect().name);
+        out.println("action=" + ast.action().name);
+        out.println("left-anchor=" + ast.leftAnchor().name);
         out.println("right-anchor=" + ast.rightAnchor());
         out.println("regex=" + ast.regex());
         out.println("pattern=" + ast.source().materialize(ast.pattern()));
@@ -123,8 +123,8 @@ public final class InspectCommand implements Callable<Integer> {
             Span body
     ) {
         PrintWriter out = spec.commandLine().getOut();
-        printHeader(out, kind, dialect.name());
-        out.println("action=" + action);
+        printHeader(out, kind, dialect.name);
+        out.println("action=" + action.name);
         out.println("syntax=" + syntax);
         nonBasicModifiers.ifPresent(span -> out.println(
                 "non-basic-modifiers=" + source.materialize(span)));
@@ -142,14 +142,14 @@ public final class InspectCommand implements Callable<Integer> {
             Span span
     ) {
         PrintWriter out = spec.commandLine().getOut();
-        printHeader(out, kind, dialect.name());
+        printHeader(out, kind, dialect.name);
         out.println(field + "=" + source.materialize(span));
         out.println("raw=" + source.materialize());
     }
 
     private void printDirective(PreprocessorDirectiveAst ast) {
         PrintWriter out = spec.commandLine().getOut();
-        printHeader(out, "PREPROCESSOR", ast.dialect().name());
+        printHeader(out, "PREPROCESSOR", ast.dialect().name);
         out.println("name=" + ast.source().materialize(ast.name()));
         ast.value().ifPresent(span -> out.println("value=" + ast.source().materialize(span)));
         out.println("raw=" + ast.source().materialize());
@@ -157,15 +157,15 @@ public final class InspectCommand implements Callable<Integer> {
 
     private void printEmpty(EmptyAst ast) {
         PrintWriter out = spec.commandLine().getOut();
-        printHeader(out, "EMPTY", ast.dialect().name());
+        printHeader(out, "EMPTY", ast.dialect().name);
         out.println("raw=" + ast.source().materialize());
     }
 
     private void printOpaque(OpaqueAst ast) {
         PrintWriter out = spec.commandLine().getOut();
         out.println("status=opaque");
-        out.println("kind=" + ast.kind());
-        out.println("dialect=" + ast.dialect());
+        out.println("kind=" + ast.kind().name);
+        out.println("dialect=" + ast.dialect().name);
         out.println("raw=" + ast.source().materialize());
     }
 

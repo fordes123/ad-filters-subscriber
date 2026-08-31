@@ -55,7 +55,7 @@ final class ConfigLoaderTest {
                       timeout: 2s
                       concurrency: 16
                   logging:
-                    include-successful-conversions: true
+                    level: trace
                 """, StandardCharsets.UTF_8);
 
         BuildPlan plan = new ConfigLoader().load(config);
@@ -70,7 +70,7 @@ final class ConfigLoaderTest {
         assertEquals(Duration.ofSeconds(2), plan.sourceLoading().requestTimeout());
         assertFalse(plan.processing().allowNarrowing());
         assertTrue(plan.processing().allowBroadening());
-        assertTrue(plan.logging().includeSuccessfulConversions());
+        assertEquals(BuildPlan.LogLevel.TRACE, plan.logging().level());
     }
 
     @Test
@@ -125,16 +125,6 @@ final class ConfigLoaderTest {
                 """);
 
         assertTrue(error.getMessage().contains("未知字段: retries"));
-    }
-
-    @Test
-    void disablesSuccessfulConversionLogsByDefault() throws Exception {
-        Path config = tempDirectory.resolve("defaults.yaml");
-        Files.writeString(config, baseConfig(""), StandardCharsets.UTF_8);
-
-        BuildPlan plan = new ConfigLoader().load(config);
-
-        assertFalse(plan.logging().includeSuccessfulConversions());
     }
 
     @Test

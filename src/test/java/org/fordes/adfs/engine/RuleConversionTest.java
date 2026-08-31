@@ -334,7 +334,7 @@ final class RuleConversionTest {
             ClashDialect clashDialect
     ) {
         return new BuildPlan.OutputSpec(
-                Path.of("target", "conversion-" + format.name().toLowerCase()),
+                Path.of("target", "conversion-" + format.name),
                 format,
                 dialect,
                 clashDialect,

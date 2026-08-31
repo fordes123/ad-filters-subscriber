@@ -1,9 +1,9 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
+import org.fordes.adfs.logging.LoggingConfigurator;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.syntax.RuleFormat;
-import org.fordes.adfs.tracking.ConversionTracker;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
@@ -16,14 +16,19 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 final class OutputPipeline implements Callable<OutputPipeline.Staged> {
+
+    private static final Logger LOGGER = LoggingConfigurator.logger(OutputPipeline.class);
 
     private static final DateTimeFormatter HEADER_DATE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -34,31 +39,43 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
     private final BuildPlan.OutputSpec output;
     private final BuildWorkspace workspace;
     private final RuleEncoder encoder;
-    private final Path logSegment;
     private final Queue<Path> temporaryPaths;
     private final AtomicReference<Throwable> failure;
+    private final Map<String, BuildPlan.SourceSpec> sourcesById;
     private final long memoryBudget;
     private final ArrayBlockingQueue<Batch> queue;
+    private final String outputName;
+    private final String outputDialect;
+    private final boolean debugLogging;
+    private final boolean traceLogging;
 
     OutputPipeline(
             BuildPlan plan,
             BuildPlan.OutputSpec output,
             BuildWorkspace workspace,
             RuleEncoder encoder,
-            Path logSegment,
             Queue<Path> temporaryPaths,
             AtomicReference<Throwable> failure,
+            Map<String, BuildPlan.SourceSpec> sourcesById,
             long memoryBudget
     ) {
         this.plan = Objects.requireNonNull(plan, "plan 不能为空");
         this.output = Objects.requireNonNull(output, "output 不能为空");
         this.workspace = Objects.requireNonNull(workspace, "workspace 不能为空");
         this.encoder = Objects.requireNonNull(encoder, "encoder 不能为空");
-        this.logSegment = Objects.requireNonNull(logSegment, "logSegment 不能为空");
         this.temporaryPaths = Objects.requireNonNull(temporaryPaths, "temporaryPaths 不能为空");
         this.failure = Objects.requireNonNull(failure, "failure 不能为空");
+        this.sourcesById = Objects.requireNonNull(sourcesById, "sourcesById 不能为空");
         this.memoryBudget = memoryBudget;
         this.queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+        this.outputName = output.path().getFileName().toString();
+        this.outputDialect = switch (output.format()) {
+            case EASYLIST, DNS -> "，" + output.dialect().name;
+            case CLASH -> "，" + output.clashDialect().name;
+            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
+        };
+        this.debugLogging = LOGGER.isLoggable(Level.FINE);
+        this.traceLogging = LOGGER.isLoggable(Level.FINEST);
     }
 
     boolean accepts(String sourceId) {
@@ -76,17 +93,15 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
     @Override
     public Staged call() throws Exception {
         Path temporary = null;
-        try (ConversionTracker tracker = ConversionTracker.open(logSegment);
-             SpillableRuleDeduplicator deduplicator =
+        try (SpillableRuleDeduplicator deduplicator =
                      new SpillableRuleDeduplicator(workspace, memoryBudget)) {
-            Counters counters = consume(deduplicator, tracker);
+            Counters counters = consume(deduplicator);
             SpillableRuleDeduplicator.Result result = deduplicator.finish();
             temporary = createTemporaryOutput();
             temporaryPaths.add(temporary);
-            writeArtifact(temporary, result, tracker);
+            writeArtifact(temporary, result);
             return new Staged(
                     temporary,
-                    logSegment,
                     new BuildEngine.OutputReport(
                             output.path(),
                             counters.approximations,
@@ -108,12 +123,9 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
         }
     }
 
-    private Counters consume(
-            SpillableRuleDeduplicator deduplicator,
-            ConversionTracker tracker
-    ) throws IOException, InterruptedException {
+    private Counters consume(SpillableRuleDeduplicator deduplicator)
+            throws IOException, InterruptedException {
         Counters counters = new Counters();
-        String outputName = output.path().getFileName().toString();
         while (true) {
             Batch batch = queue.take();
             if (batch.end()) {
@@ -140,12 +152,9 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
                             record
                     );
                 } else {
-                    tracker.failure(
-                            record.sourceId(),
-                            outputName,
-                            record.raw(),
-                            conversion.reason()
-                    );
+                    if (debugLogging) {
+                        logFailure(record, conversion.reason());
+                    }
                 }
             }
         }
@@ -187,20 +196,18 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
 
     private void writeArtifact(
             Path temporary,
-            SpillableRuleDeduplicator.Result rules,
-            ConversionTracker tracker
+            SpillableRuleDeduplicator.Result rules
     ) throws IOException {
         try (BufferedWriter writer = openWriter(temporary)) {
             if (output.format() == RuleFormat.SING_BOX) {
-                writeSingBoxArtifact(writer, rules, tracker);
+                writeSingBoxArtifact(writer, rules);
                 return;
             }
             writeHeader(writer, rules.unique());
-            String outputName = output.path().getFileName().toString();
             rules.forEach(candidate -> {
                 writer.write(candidate.content());
                 writer.newLine();
-                logSuccess(tracker, outputName, candidate);
+                logSuccess(candidate);
             });
         }
     }
@@ -226,10 +233,8 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
 
     private void writeSingBoxArtifact(
             BufferedWriter writer,
-            SpillableRuleDeduplicator.Result rules,
-            ConversionTracker tracker
+            SpillableRuleDeduplicator.Result rules
     ) throws IOException {
-        String outputName = output.path().getFileName().toString();
         writer.write("{\n  \"version\": 2,\n  \"rules\": [");
         if (rules.unique() > 0) {
             writer.newLine();
@@ -240,7 +245,7 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
                     writer.write(',');
                 }
                 writer.newLine();
-                logSuccess(tracker, outputName, candidate);
+                logSuccess(candidate);
             });
             writer.write("  ");
         }
@@ -248,19 +253,49 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
         writer.newLine();
     }
 
-    private void logSuccess(
-            ConversionTracker tracker,
-            String outputName,
-            SpillableRuleDeduplicator.Candidate candidate
-    ) throws IOException {
-        if (!plan.logging().includeSuccessfulConversions()) {
+    private void logSuccess(SpillableRuleDeduplicator.Candidate candidate) {
+        if (!traceLogging) {
             return;
         }
-        tracker.success(
-                candidate.sourceId(),
-                outputName,
-                candidate.raw(),
-                candidate.content()
+        BuildPlan.SourceSpec source = sourcesById.get(candidate.sourceId());
+        LOGGER.log(
+                Level.FINEST,
+                "规则转换成功, {0}({1}{2}) --> {3}({4}{5}): {6} --> {7}",
+                new Object[]{
+                        source.id(),
+                        source.format().name,
+                        switch (source.format()) {
+                            case EASYLIST, DNS -> "，" + source.dialect().name;
+                            case CLASH -> "，" + source.clashDialect().name;
+                            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
+                        },
+                        outputName,
+                        output.format().name,
+                        outputDialect,
+                        candidate.raw(),
+                        candidate.content()
+                }
+        );
+    }
+
+    private void logFailure(RuleRecord record, String reason) {
+        LOGGER.log(
+                Level.FINE,
+                "规则转换失败, {0}({1}{2}) --> {3}({4}{5}): {6} --> {7}",
+                new Object[]{
+                        record.sourceId(),
+                        record.sourceFormat().name,
+                        switch (record.sourceFormat()) {
+                            case EASYLIST, DNS -> "，" + record.sourceDialect().name;
+                            case CLASH -> "，" + record.sourceClashDialect().name;
+                            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
+                        },
+                        outputName,
+                        output.format().name,
+                        outputDialect,
+                        record.raw(),
+                        reason
+                }
         );
     }
 
@@ -270,7 +305,7 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
                 .replace("${name}", output.path().getFileName().toString())
                 .replace(
                         "${type}",
-                        output.format().name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')
+                        output.format().name
                 )
                 .replace("${desc}", output.description())
                 .replace("${total}", Long.toString(total));
@@ -296,7 +331,7 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
     record IndexedRule(long sequence, RuleRecord rule) {
     }
 
-    record Staged(Path temporaryPath, Path logSegment, BuildEngine.OutputReport report) {
+    record Staged(Path temporaryPath, BuildEngine.OutputReport report) {
     }
 
     private record Batch(List<IndexedRule> rules, boolean end) {

@@ -28,19 +28,31 @@ public record CanonicalRule(
     }
 
     public enum MatchType {
-        EXACT_DOMAIN,
-        DOMAIN_SUFFIX,
-        SUBDOMAINS_ONLY,
-        DOMAIN_KEYWORD,
-        DOMAIN_REGEX,
-        IP_CIDR,
-        URL_PATTERN,
-        REGEX
+        EXACT_DOMAIN("exact-domain"),
+        DOMAIN_SUFFIX("domain-suffix"),
+        SUBDOMAINS_ONLY("subdomains-only"),
+        DOMAIN_KEYWORD("domain-keyword"),
+        DOMAIN_REGEX("domain-regex"),
+        IP_CIDR("ip-cidr"),
+        URL_PATTERN("url-pattern"),
+        REGEX("regex");
+
+        public final String name;
+
+        MatchType(String name) {
+            this.name = name;
+        }
     }
 
     public enum Action {
-        BLOCK,
-        ALLOW,
-        REWRITE
+        BLOCK("block"),
+        ALLOW("allow"),
+        REWRITE("rewrite");
+
+        public final String name;
+
+        Action(String name) {
+            this.name = name;
+        }
     }
 }

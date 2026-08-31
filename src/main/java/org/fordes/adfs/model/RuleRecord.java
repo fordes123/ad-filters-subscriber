@@ -60,19 +60,25 @@ public record RuleRecord(
     }
 
     public enum SourceSyntax {
-        CANONICAL,
-        NETWORK,
-        COSMETIC,
-        ADGUARD_EXTENDED_COSMETIC,
-        CSS_INJECTION,
-        UBO_SCRIPTLET,
-        ADGUARD_SCRIPTLET,
-        ABP_SNIPPET,
-        UBO_HTML,
-        ADGUARD_HTML,
-        ADGUARD_JAVASCRIPT,
-        DIALECT_SPECIFIC_EXTENSION,
-        CLASH_CLASSICAL,
-        OPAQUE
+        CANONICAL("canonical"),
+        NETWORK("network"),
+        COSMETIC("cosmetic"),
+        ADGUARD_EXTENDED_COSMETIC("adguard-extended-cosmetic"),
+        CSS_INJECTION("css-injection"),
+        UBO_SCRIPTLET("ubo-scriptlet"),
+        ADGUARD_SCRIPTLET("adguard-scriptlet"),
+        ABP_SNIPPET("abp-snippet"),
+        UBO_HTML("ubo-html"),
+        ADGUARD_HTML("adguard-html"),
+        ADGUARD_JAVASCRIPT("adguard-javascript"),
+        DIALECT_SPECIFIC_EXTENSION("dialect-specific-extension"),
+        CLASH_CLASSICAL("clash-classical"),
+        OPAQUE("opaque");
+
+        public final String name;
+
+        SourceSyntax(String name) {
+            this.name = name;
+        }
     }
 }

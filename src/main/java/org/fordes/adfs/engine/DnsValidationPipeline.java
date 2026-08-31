@@ -1,6 +1,7 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
+import org.fordes.adfs.logging.LoggingConfigurator;
 import org.fordes.adfs.model.CanonicalRule;
 import org.fordes.adfs.model.RuleRecord;
 
@@ -23,8 +24,12 @@ import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 final class DnsValidationPipeline {
+
+    private static final Logger LOGGER = LoggingConfigurator.logger(DnsValidationPipeline.class);
 
     private static final int BUFFER_SIZE = 32 * 1024;
     private static final int MAX_STRING_BYTES = 64 * 1024 * 1024;
@@ -52,7 +57,20 @@ final class DnsValidationPipeline {
         if (!policy.enabled()) {
             return stages;
         }
+        try {
+            return validateEnabled(stages);
+        } catch (IOException | RuntimeException error) {
+            LOGGER.log(
+                    Level.WARNING,
+                    "DNS 验证失败, 待验证域名 --> 原始规则: {0}: {1} --> 保留全部原始规则并继续",
+                    new Object[]{error.getClass().getSimpleName(), error.getMessage()}
+            );
+            return stages;
+        }
+    }
 
+    private List<SourceStage> validateEnabled(List<SourceStage> stages)
+            throws IOException, InterruptedException {
         Optional<Path> references = extractReferences(stages);
         if (references.isEmpty()) {
             return stages;
@@ -279,7 +297,6 @@ final class DnsValidationPipeline {
             throw new IOException("DNS 无效引用超出来源规则范围: source=" + stage.source().id()
                     + ", ordinal=" + invalid.ruleOrdinal());
         }
-        Files.deleteIfExists(stage.segment());
         BuildEngine.SourceReport original = stage.report();
         SourceStage result = new SourceStage(stage.source(), filteredSegment, new BuildEngine.SourceReport(
                 original.sourceId(),
@@ -296,12 +313,12 @@ final class DnsValidationPipeline {
         } catch (ExecutionException error) {
             Throwable cause = error.getCause();
             if (cause instanceof IOException ioError) {
-                throw ioError;
+                throw new IOException("DNS 验证失败", ioError);
             }
             if (cause instanceof InterruptedException interrupted) {
                 throw interrupted;
             }
-            throw new IOException("DNS 验证失败: " + cause.getMessage(), cause);
+            throw new IOException("DNS 验证失败", cause);
         }
     }
 

@@ -1,7 +1,7 @@
 package org.fordes.adfs.source;
 
-import org.fordes.adfs.console.ConsoleReporter;
 import org.fordes.adfs.config.BuildPlan;
+import org.fordes.adfs.logging.LoggingConfigurator;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,23 +15,21 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
 
 public final class SourceOpener {
+
+    private static final Logger LOGGER = LoggingConfigurator.logger(SourceOpener.class);
 
     private static final int MAX_ATTEMPTS = 3;
 
     private final BuildPlan.SourceLoadingPolicy policy;
     private final HttpClient httpClient;
-    private final ConsoleReporter reporter;
 
     public SourceOpener(BuildPlan.SourceLoadingPolicy policy) {
-        this(policy, ConsoleReporter.silent());
-    }
-
-    public SourceOpener(BuildPlan.SourceLoadingPolicy policy, ConsoleReporter reporter) {
         this.policy = Objects.requireNonNull(policy, "policy 不能为空");
-        this.reporter = Objects.requireNonNull(reporter, "reporter 不能为空");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(policy.connectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -41,7 +39,7 @@ public final class SourceOpener {
     public OpenedSource open(BuildPlan.SourceSpec source) throws IOException, InterruptedException {
         Objects.requireNonNull(source, "source 不能为空");
         if (isHttp(source.location())) {
-            return openHttp(source.id(), source.location());
+            return openHttp(source);
         }
         Path path = Path.of(source.location()).toAbsolutePath().normalize();
         if (!Files.isRegularFile(path)) {
@@ -54,13 +52,13 @@ public final class SourceOpener {
         );
     }
 
-    private OpenedSource openHttp(String sourceId, String location)
+    private OpenedSource openHttp(BuildPlan.SourceSpec source)
             throws IOException, InterruptedException {
         URI uri;
         try {
-            uri = URI.create(location);
+            uri = URI.create(source.location());
         } catch (IllegalArgumentException error) {
-            throw new IOException("规则源 URL 无效: source=" + sourceId, error);
+            throw new IOException("规则源 URL 无效: source=" + source.id(), error);
         }
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(policy.requestTimeout())
@@ -100,7 +98,7 @@ public final class SourceOpener {
 
                 response.body().close();
                 IOException statusError = new IOException(
-                        "HTTP 规则源返回非成功状态: source=" + sourceId + ", status=" + status);
+                        "HTTP 规则源返回非成功状态: source=" + source.id() + ", status=" + status);
                 if (status < 500) {
                     throw new NonRetryableHttpException(statusError.getMessage());
                 }
@@ -117,15 +115,27 @@ public final class SourceOpener {
                 }
                 attemptError = error;
             }
-            reporter.warning(
-                    "%s 读取失败，%d 秒后重试（%d/%d）：%s".formatted(
-                            sourceId,
-                            attempt,
-                            attempt,
-                            MAX_ATTEMPTS,
-                            attemptError.getMessage()
-                    )
-            );
+            if (LOGGER.isLoggable(Level.WARNING)) {
+                LOGGER.log(
+                        Level.WARNING,
+                        "规则源读取失败, {0}({1}{2}) --> 远程规则源: 第 {3}/{4} 次尝试，{5} 秒后重试 "
+                                + "--> {6}: {7}",
+                        new Object[]{
+                                source.id(),
+                                source.format().name,
+                                switch (source.format()) {
+                                    case EASYLIST, DNS -> "，" + source.dialect().name;
+                                    case CLASH -> "，" + source.clashDialect().name;
+                                    case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
+                                },
+                                attempt,
+                                MAX_ATTEMPTS,
+                                attempt,
+                                attemptError.getClass().getSimpleName(),
+                                attemptError.getMessage()
+                        }
+                );
+            }
             Thread.sleep(Duration.ofSeconds(attempt));
             attempt++;
         }

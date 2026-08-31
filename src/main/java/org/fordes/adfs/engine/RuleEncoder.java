@@ -116,7 +116,7 @@ final class RuleEncoder {
         if (output.format() != RuleFormat.EASYLIST) {
             return ConversionResult.unsupported(
                     ConversionFailure.TARGET_FORMAT_UNSUPPORTED,
-                    formatName(output.format()) + " 只能表达网络或域名匹配规则，无法表达页面级扩展规则"
+                    output.format().name + " 只能表达网络或域名匹配规则，无法表达页面级扩展规则"
             );
         }
 
@@ -160,7 +160,7 @@ final class RuleEncoder {
         if (rule.nonBasicModifiers().isPresent() && dialect != DialectProfile.ADGUARD) {
             return ConversionResult.unsupported(
                     ConversionFailure.TARGET_CAPABILITY_UNSUPPORTED,
-                    dialectName(dialect) + " 无法表达该元素规则的非基础修饰条件"
+                    dialect.name + " 无法表达该元素规则的非基础修饰条件"
             );
         }
         return ConversionResult.success(renderExtended(
@@ -298,7 +298,7 @@ final class RuleEncoder {
     private static ConversionResult unsupportedDialect(String ruleType, DialectProfile dialect) {
         return ConversionResult.unsupported(
                 ConversionFailure.TARGET_DIALECT_UNSUPPORTED,
-                dialectName(dialect) + " 无法稳定表达" + ruleType
+                dialect.name + " 无法稳定表达" + ruleType
         );
     }
 
@@ -307,38 +307,9 @@ final class RuleEncoder {
             BuildPlan.OutputSpec output
     ) {
         if (syntax == RuleRecord.SourceSyntax.CLASH_CLASSICAL) {
-            return formatName(output.format()) + " 无法表达该 Clash classical 规则类型";
+            return output.format().name + " 无法表达该 Clash classical 规则类型";
         }
         return "无法识别该规则的可转换语义，未执行可能改变匹配结果的转换";
-    }
-
-    private static String formatName(RuleFormat format) {
-        return switch (format) {
-            case EASYLIST -> "EasyList";
-            case DNS -> "AdGuard DNS";
-            case HOSTS -> "hosts";
-            case DNSMASQ -> "dnsmasq";
-            case SMARTDNS -> "smartdns";
-            case CLASH -> "Clash";
-            case SING_BOX -> "sing-box";
-        };
-    }
-
-    private static String dialectName(DialectProfile dialect) {
-        return switch (dialect) {
-            case ADBLOCK_BASE -> "基础 Adblock 方言";
-            case ABP -> "ABP";
-            case ADGUARD -> "AdGuard";
-            case UBO -> "uBO";
-        };
-    }
-
-    private static String clashDialectName(ClashDialect dialect) {
-        return switch (dialect) {
-            case DOMAIN -> "Clash domain 方言";
-            case IPCIDR -> "Clash ipcidr 方言";
-            case CLASSICAL -> "Clash classical 方言";
-        };
     }
 
     private static ConversionResult encodeEasylist(
@@ -353,7 +324,7 @@ final class RuleEncoder {
         Optional<String> modifierText = modifiers(rule.featureMask(), dialect);
         if (modifierText.isEmpty()) {
             return ConversionResult.unsupported(
-                    dialectName(dialect) + " 无法表达该规则的修饰条件"
+                    dialect.name + " 无法表达该规则的修饰条件"
             );
         }
         String prefix = rule.action() == CanonicalRule.Action.ALLOW ? "@@" : "";
@@ -401,7 +372,7 @@ final class RuleEncoder {
         Optional<String> modifierText = modifiers(rule.featureMask(), dialect);
         if (modifierText.isEmpty()) {
             return ConversionResult.unsupported(
-                    dialectName(dialect) + " 无法表达该规则的修饰条件"
+                    dialect.name + " 无法表达该规则的修饰条件"
             );
         }
         String prefix = rule.action() == CanonicalRule.Action.ALLOW ? "@@" : "";
@@ -532,7 +503,7 @@ final class RuleEncoder {
         };
         if (content == null) {
             return ConversionResult.unsupported(
-                    clashDialectName(dialect) + "无法表达该匹配类型"
+                    "Clash " + dialect.name + " 方言无法表达该匹配类型"
             );
         }
         return ConversionResult.success(
@@ -637,21 +608,33 @@ final class RuleEncoder {
     }
 
     public enum ConversionStatus {
-        EXACT,
-        NARROWING,
-        BROADENING,
-        UNSUPPORTED
+        EXACT("exact"),
+        NARROWING("narrowing"),
+        BROADENING("broadening"),
+        UNSUPPORTED("unsupported");
+
+        public final String name;
+
+        ConversionStatus(String name) {
+            this.name = name;
+        }
     }
 
     public enum ConversionFailure {
-        TARGET_FORMAT_UNSUPPORTED,
-        TARGET_DIALECT_UNSUPPORTED,
-        TARGET_CAPABILITY_UNSUPPORTED,
-        SCRIPTLET_UNSUPPORTED,
-        TRANSCODER_UNAVAILABLE,
-        SOURCE_RULE_UNRECOGNIZED,
-        POLICY_REJECTED,
-        SEMANTICS_UNREPRESENTABLE
+        TARGET_FORMAT_UNSUPPORTED("target-format-unsupported"),
+        TARGET_DIALECT_UNSUPPORTED("target-dialect-unsupported"),
+        TARGET_CAPABILITY_UNSUPPORTED("target-capability-unsupported"),
+        SCRIPTLET_UNSUPPORTED("scriptlet-unsupported"),
+        TRANSCODER_UNAVAILABLE("transcoder-unavailable"),
+        SOURCE_RULE_UNRECOGNIZED("source-rule-unrecognized"),
+        POLICY_REJECTED("policy-rejected"),
+        SEMANTICS_UNREPRESENTABLE("semantics-unrepresentable");
+
+        public final String name;
+
+        ConversionFailure(String name) {
+            this.name = name;
+        }
     }
 
     public record ConversionResult(

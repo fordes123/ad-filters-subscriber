@@ -46,7 +46,7 @@ final class BuildResultPrinter {
         );
         Path outputDirectory = commonDirectory(report.outputs());
         printFiles(report.outputs(), outputDirectory == null);
-        printPaths(outputDirectory, report.trackLog());
+        printOutputDirectory(outputDirectory);
         printWarning(invalid, approximations, unsupported, emptySources, emptyOutputs);
         out.flush();
     }
@@ -87,11 +87,10 @@ final class BuildResultPrinter {
         return value + " ".repeat(width - displayWidth(value));
     }
 
-    private void printPaths(Path outputDirectory, Path trackLog) {
+    private void printOutputDirectory(Path outputDirectory) {
         if (outputDirectory != null) {
             out.printf("%n  %-4s %s%n", "输出", outputDirectory);
         }
-        out.printf("  %-4s %s%n", "记录", trackLog);
     }
 
     private static Path commonDirectory(List<BuildEngine.OutputReport> outputs) {

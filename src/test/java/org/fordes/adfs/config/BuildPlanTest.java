@@ -101,7 +101,7 @@ final class BuildPlanTest {
                         new BuildPlan.DnsValidationPolicy(
                                 false, Duration.ofSeconds(1), 1, Optional.empty())
                 ),
-                new BuildPlan.LoggingPolicy(false)
+                BuildPlan.LoggingPolicy.defaults()
         );
     }
 

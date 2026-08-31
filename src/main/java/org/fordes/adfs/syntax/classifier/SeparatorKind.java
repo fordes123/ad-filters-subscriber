@@ -1,22 +1,28 @@
 package org.fordes.adfs.syntax.classifier;
 
 public enum SeparatorKind {
-    UBO_SCRIPTLET_EXCEPTION,
-    ADGUARD_SCRIPTLET_EXCEPTION,
-    UBO_HTML_EXCEPTION,
-    EXTENDED_CSS_EXCEPTION,
-    EXTENDED_COSMETIC_EXCEPTION,
-    HASH_DOLLAR_EXCEPTION,
-    HASH_PERCENT_EXCEPTION,
-    ELEMENT_HIDING_EXCEPTION,
-    ADGUARD_HTML_EXCEPTION,
-    UBO_SCRIPTLET,
-    ADGUARD_SCRIPTLET,
-    UBO_HTML,
-    EXTENDED_CSS,
-    EXTENDED_COSMETIC,
-    HASH_DOLLAR,
-    HASH_PERCENT,
-    ELEMENT_HIDING,
-    ADGUARD_HTML
+    UBO_SCRIPTLET_EXCEPTION("ubo-scriptlet-exception"),
+    ADGUARD_SCRIPTLET_EXCEPTION("adguard-scriptlet-exception"),
+    UBO_HTML_EXCEPTION("ubo-html-exception"),
+    EXTENDED_CSS_EXCEPTION("extended-css-exception"),
+    EXTENDED_COSMETIC_EXCEPTION("extended-cosmetic-exception"),
+    HASH_DOLLAR_EXCEPTION("hash-dollar-exception"),
+    HASH_PERCENT_EXCEPTION("hash-percent-exception"),
+    ELEMENT_HIDING_EXCEPTION("element-hiding-exception"),
+    ADGUARD_HTML_EXCEPTION("adguard-html-exception"),
+    UBO_SCRIPTLET("ubo-scriptlet"),
+    ADGUARD_SCRIPTLET("adguard-scriptlet"),
+    UBO_HTML("ubo-html"),
+    EXTENDED_CSS("extended-css"),
+    EXTENDED_COSMETIC("extended-cosmetic"),
+    HASH_DOLLAR("hash-dollar"),
+    HASH_PERCENT("hash-percent"),
+    ELEMENT_HIDING("element-hiding"),
+    ADGUARD_HTML("adguard-html");
+
+    public final String name;
+
+    SeparatorKind(String name) {
+        this.name = name;
+    }
 }

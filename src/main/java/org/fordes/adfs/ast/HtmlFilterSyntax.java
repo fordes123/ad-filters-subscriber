@@ -1,6 +1,12 @@
 package org.fordes.adfs.ast;
 
 public enum HtmlFilterSyntax {
-    UBO,
-    ADGUARD
+    UBO("ubo"),
+    ADGUARD("adguard");
+
+    public final String name;
+
+    HtmlFilterSyntax(String name) {
+        this.name = name;
+    }
 }

@@ -192,7 +192,30 @@ public record BuildPlan(
         }
     }
 
-    public record LoggingPolicy(boolean includeSuccessfulConversions) {
+    public record LoggingPolicy(LogLevel level) {
+
+        public LoggingPolicy {
+            Objects.requireNonNull(level, "logging.level 不能为空");
+        }
+
+        public static LoggingPolicy defaults() {
+            return new LoggingPolicy(LogLevel.INFO);
+        }
+    }
+
+    public enum LogLevel {
+        TRACE("trace"),
+        DEBUG("debug"),
+        INFO("info"),
+        WARN("warn"),
+        ERROR("error"),
+        OFF("off");
+
+        public final String name;
+
+        LogLevel(String name) {
+            this.name = name;
+        }
     }
 
     public record DnsServer(String host, int port) {

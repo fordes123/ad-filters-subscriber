@@ -3,7 +3,7 @@ package org.fordes.adfs;
 import org.fordes.adfs.cli.BuildCommand;
 import org.fordes.adfs.cli.CheckCommand;
 import org.fordes.adfs.cli.InspectCommand;
-import org.fordes.adfs.console.ConsoleReporter;
+import org.fordes.adfs.logging.LoggingConfigurator;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -13,6 +13,8 @@ import picocli.CommandLine.Spec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 
 @Command(
         name = "adfs",
@@ -57,24 +59,24 @@ public final class AdFSApplication implements Runnable {
             CommandLine commandLine,
             CommandLine.ParseResult parseResult
     ) {
-        AdFSApplication application = (AdFSApplication) commandLine
-                .getCommandSpec()
-                .root()
-                .userObject();
-        application.reporter().failure("命令执行失败", error);
+        try {
+            LoggingConfigurator.ensureConfigured();
+            LoggingConfigurator.logger(AdFSApplication.class)
+                    .log(Level.SEVERE, "执行失败, 请检查日志");
+        } catch (IOException loggingError) {
+            error.addSuppressed(loggingError);
+        }
+        commandLine.getErr().printf(
+                "执行失败：%s%n",
+                error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()
+        );
+        commandLine.getErr().flush();
         return commandLine.getCommandSpec().exitCodeOnExecutionException();
     }
 
     @Override
     public void run() {
         spec.commandLine().usage(spec.commandLine().getOut());
-    }
-
-    public ConsoleReporter reporter() {
-        return new ConsoleReporter(
-                spec.commandLine().getErr(),
-                spec.commandLine().getColorScheme().ansi()
-        );
     }
 
     public static final class VersionProvider implements IVersionProvider {

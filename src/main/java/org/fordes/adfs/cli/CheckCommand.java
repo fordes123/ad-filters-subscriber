@@ -80,7 +80,7 @@ public final class CheckCommand implements Callable<Integer> {
                     Throwable cause = error.getCause();
                     throw new ExecutionException(
                             spec.commandLine(),
-                            "读取或解析规则源失败: " + cause.getMessage(),
+                            "读取或解析规则源失败",
                             cause
                     );
                 }

@@ -1,20 +1,20 @@
 package org.fordes.adfs.cli;
 
-import org.fordes.adfs.AdFSApplication;
-import org.fordes.adfs.console.ConsoleReporter;
 import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.config.ConfigLoader;
 import org.fordes.adfs.engine.BuildEngine;
+import org.fordes.adfs.logging.LoggingConfigurator;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
-import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @Command(
         name = "build",
@@ -38,24 +38,31 @@ public final class BuildCommand implements Callable<Integer> {
     )
     private Optional<Path> outputDirectory = Optional.empty();
 
-    @ParentCommand
-    private AdFSApplication application;
-
     @Spec
     private CommandSpec spec;
 
     @Override
     public Integer call() throws IOException, InterruptedException {
-        ConsoleReporter reporter = application.reporter();
         try {
             BuildPlan plan = new ConfigLoader().load(configPath, outputDirectory);
-            reporter.status(
-                    "开始处理 %,d 个规则源，生成 %,d 个文件".formatted(
-                            plan.sources().size(),
-                            plan.outputs().size()
-                    )
+            LoggingConfigurator.configure(plan.logging());
+            Logger logger = LoggingConfigurator.logger(BuildCommand.class);
+            logger.log(
+                    Level.INFO,
+                    "构建开始, 输入源 {0} 个 --> 输出文件 {1} 个: 开始处理",
+                    new Object[]{plan.sources().size(), plan.outputs().size()}
             );
-            BuildEngine.BuildReport report = new BuildEngine(reporter).build(plan);
+            BuildEngine.BuildReport report = new BuildEngine().build(plan);
+            logger.log(
+                    Level.INFO,
+                    "构建完成, 输入源 {0} 个 --> 输出文件 {1} 个: 无效规则 {2} 条，耗时 {3} ms",
+                    new Object[]{
+                            report.sources().size(),
+                            report.outputs().size(),
+                            report.invalidRules(),
+                            report.elapsed().toMillis()
+                    }
+            );
             new BuildResultPrinter(
                     spec.commandLine().getOut(),
                     spec.commandLine().getColorScheme()

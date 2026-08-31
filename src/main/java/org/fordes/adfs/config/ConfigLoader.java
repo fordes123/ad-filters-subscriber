@@ -122,18 +122,30 @@ public final class ConfigLoader {
         rejectUnknownFields(
                 logging,
                 "application.logging",
-                Set.of("include-successful-conversions")
+                Set.of("level")
         );
-
         return new BuildPlan(
                 sources,
                 outputs,
                 sourceLoadingPolicy(sourceLoading),
                 processingPolicy(processing, dnsValidation),
-                new BuildPlan.LoggingPolicy(
-                        bool(logging, "include-successful-conversions", false)
-                )
+                loggingPolicy(logging)
         );
+    }
+
+    private static BuildPlan.LoggingPolicy loggingPolicy(JsonNode node) {
+        return new BuildPlan.LoggingPolicy(logLevel(node));
+    }
+
+    private static BuildPlan.LogLevel logLevel(JsonNode node) {
+        String value = text(node, "level", BuildPlan.LogLevel.INFO.name);
+        String name = value.trim();
+        for (BuildPlan.LogLevel level : BuildPlan.LogLevel.values()) {
+            if (level.name.equalsIgnoreCase(name)) {
+                return level;
+            }
+        }
+        throw new IllegalArgumentException("未知日志等级: " + value);
     }
 
     private static BuildPlan.ProcessingPolicy processingPolicy(
@@ -293,12 +305,14 @@ public final class ConfigLoader {
             String field,
             DialectProfile fallback
     ) {
-        String value = text(node, field, fallback.name());
-        try {
-            return DialectProfile.valueOf(value.trim().toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException("未知 Adblock 方言: " + value, error);
+        String value = text(node, field, fallback.name);
+        String name = value.trim();
+        for (DialectProfile profile : DialectProfile.values()) {
+            if (profile.name.equalsIgnoreCase(name)) {
+                return profile;
+            }
         }
+        throw new IllegalArgumentException("未知 Adblock 方言: " + value);
     }
 
     private static DialectProfile adblockDialect(JsonNode node, RuleFormat format) {
@@ -309,7 +323,7 @@ public final class ConfigLoader {
 
     private static ClashDialect clashDialect(JsonNode node, RuleFormat format) {
         return format == RuleFormat.CLASH
-                ? ClashDialect.parse(text(node, "dialect", ClashDialect.CLASSICAL.name()))
+                ? ClashDialect.parse(text(node, "dialect", ClashDialect.CLASSICAL.name))
                 : ClashDialect.CLASSICAL;
     }
 

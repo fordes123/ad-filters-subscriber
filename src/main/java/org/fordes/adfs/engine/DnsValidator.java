@@ -56,6 +56,7 @@ final class DnsValidator implements AutoCloseable {
         private static final int OPCODE_MASK = 0x7800;
         private static final int RESPONSE_CODE_MASK = 0x000F;
         private static final int RESPONSE_NO_ERROR = 0;
+        private static final int RESPONSE_SERVER_FAILURE = 2;
         private static final int RESPONSE_NXDOMAIN = 3;
 
         private final InetSocketAddress server;
@@ -217,7 +218,7 @@ final class DnsValidator implements AutoCloseable {
 
         private static boolean responseExists(DnsResponse response, String domain) throws IOException {
             return switch (response.responseCode()) {
-                case RESPONSE_NO_ERROR -> true;
+                case RESPONSE_NO_ERROR, RESPONSE_SERVER_FAILURE -> true;
                 case RESPONSE_NXDOMAIN -> false;
                 default -> throw new IOException(
                         "DNS server 返回失败状态: domain=" + domain

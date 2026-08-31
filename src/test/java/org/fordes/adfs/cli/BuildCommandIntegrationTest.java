@@ -1,11 +1,8 @@
 package org.fordes.adfs.cli;
 
 import org.fordes.adfs.AdFSApplication;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.parallel.ResourceLock;
 import picocli.CommandLine;
 
 import java.io.PrintWriter;
@@ -13,36 +10,15 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ResourceLock("conversion.log")
 final class BuildCommandIntegrationTest {
-
-    private static final Path CONVERSION_LOG = Path.of("conversion.log").toAbsolutePath();
-    private static Optional<byte[]> originalConversionLog;
 
     @TempDir
     private Path tempDirectory;
-
-    @BeforeAll
-    static void preserveConversionLog() throws Exception {
-        originalConversionLog = Files.exists(CONVERSION_LOG)
-                ? Optional.of(Files.readAllBytes(CONVERSION_LOG))
-                : Optional.empty();
-    }
-
-    @AfterAll
-    static void restoreConversionLog() throws Exception {
-        if (originalConversionLog.isPresent()) {
-            Files.write(CONVERSION_LOG, originalConversionLog.orElseThrow());
-        } else {
-            Files.deleteIfExists(CONVERSION_LOG);
-        }
-    }
 
     @Test
     void buildsAllFormatsFromConfiguration() throws Exception {
@@ -214,7 +190,7 @@ final class BuildCommandIntegrationTest {
     }
 
     @Test
-    void appliesExclusionsLengthLimitsDeduplicationAndWritesAuditLog() throws Exception {
+    void appliesExclusionsLengthLimitsAndDeduplication() throws Exception {
         Path source = tempDirectory.resolve("rules.txt");
         Path outputDirectory = tempDirectory.resolve("dist-filtered");
         Path config = tempDirectory.resolve("filtered.yaml");
@@ -242,8 +218,6 @@ final class BuildCommandIntegrationTest {
                   processing:
                     min-rule-length: 2
                     excluded-domains: [excluded.test-domain.com]
-                  logging:
-                    include-successful-conversions: true
                 """.formatted(yamlPath(source), yamlPath(outputDirectory)), StandardCharsets.UTF_8);
         Files.createDirectories(outputDirectory);
         Files.writeString(outputDirectory.resolve("rules.txt"), "old-content\n", StandardCharsets.UTF_8);
@@ -257,78 +231,6 @@ final class BuildCommandIntegrationTest {
         assertFalse(rules.contains("excluded.test-domain.com"));
         assertFalse(rules.contains("old-content"));
         assertTrue(output.toString().contains("无效规则 1"));
-        String audit = Files.readString(CONVERSION_LOG);
-        assertTrue(audit.contains("[SUCCESS][IN: source][OUT: rules.txt]"));
-    }
-
-    @Test
-    void omitsSuccessfulConversionLogsButKeepsFailures() throws Exception {
-        Path source = tempDirectory.resolve("logging-rules.txt");
-        Path outputDirectory = tempDirectory.resolve("dist-logging");
-        Path config = tempDirectory.resolve("logging.yaml");
-        Files.writeString(source, """
-                ||keep.test-domain.com^
-                example.com##+js(rpnt, script, marker, replacement)
-                """, StandardCharsets.UTF_8);
-        Files.writeString(config, """
-                application:
-                  input:
-                    - name: source
-                      path: '%s'
-                      type: easylist
-                      dialect: ubo
-                  output:
-                    path: '%s'
-                    files:
-                      - name: rules.txt
-                        type: easylist
-                        dialect: adguard
-                  logging:
-                    include-successful-conversions: false
-                """.formatted(yamlPath(source), yamlPath(outputDirectory)), StandardCharsets.UTF_8);
-
-        StringWriter output = new StringWriter();
-        int exitCode = commandLine(output).execute("build", "--config", config.toString());
-
-        assertEquals(0, exitCode, output.toString());
-        String audit = Files.readString(CONVERSION_LOG);
-        assertFalse(audit.contains("[SUCCESS]"));
-        assertTrue(audit.contains("[FAILURE][IN: source][OUT: rules.txt]"));
-    }
-
-    @Test
-    void higherPrioritySourceWinsCrossSourceDeduplication() throws Exception {
-        Path low = tempDirectory.resolve("low.txt");
-        Path high = tempDirectory.resolve("high.txt");
-        Path outputDirectory = tempDirectory.resolve("dist-priority");
-        Path config = tempDirectory.resolve("priority.yaml");
-        Files.writeString(low, "||shared.test-domain.com^\n", StandardCharsets.UTF_8);
-        Files.writeString(high, "||shared.test-domain.com^\n", StandardCharsets.UTF_8);
-        Files.writeString(config, """
-                application:
-                  input:
-                    - name: low
-                      path: '%s'
-                      priority: 1
-                    - name: high
-                      path: '%s'
-                      priority: 10
-                  output:
-                    path: '%s'
-                    files:
-                      - name: rules.txt
-                        type: easylist
-                  logging:
-                    include-successful-conversions: true
-                """.formatted(yamlPath(low), yamlPath(high), yamlPath(outputDirectory)),
-                StandardCharsets.UTF_8);
-
-        StringWriter output = new StringWriter();
-        assertEquals(0, commandLine(output).execute("build", "-c", config.toString()), output.toString());
-
-        String audit = Files.readString(CONVERSION_LOG);
-        assertTrue(audit.contains("[SUCCESS][IN: high][OUT: rules.txt]"));
-        assertFalse(audit.contains("[SUCCESS][IN: low][OUT: rules.txt]"));
     }
 
     private static CommandLine commandLine(StringWriter output) {
