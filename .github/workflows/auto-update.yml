@@ -1,4 +1,5 @@
 name: Update Filters
+
 on:
   push:
     paths-ignore:
@@ -8,88 +9,63 @@ on:
       - '.devcontainer/**'
       - 'LICENSE'
   schedule:
-    - cron: 0 */8 * * *
+    - cron: '0 */8 * * *'
   workflow_dispatch:
     inputs:
-      profile:
-        required: false
-        default: 'prod'
-        type: string
-        description: 'Application running profile'
-
       release-branch:
+        description: Release branch name
         required: false
-        default: ''
+        default: release
         type: string
-        description: 'Release branch name'
+
 env:
   TZ: Asia/Shanghai
 
+concurrency:
+  group: update-filters-${{ inputs.release-branch || 'release' }}
+  cancel-in-progress: false
+
 jobs:
-  Update_Filters:
+  update-filters:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
-      actions: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.head_ref }}
+        uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           java-version: '25'
-          distribution: 'temurin'
+          distribution: temurin
           cache: maven
 
-      - name: Set default values
-        id: defaults
+      - name: Build filters
         run: |
-          echo "profile=${{ github.event.inputs.profile || 'prod' }}" >> $GITHUB_OUTPUT
-          echo "release-branch=${{ github.event.inputs.release-branch || 'release' }}" >> $GITHUB_OUTPUT
+          mvn -B -DskipTests package
+          java -jar "$(find target -maxdepth 1 -name 'adfs-*.jar' ! -name '*-shaded.jar')" build --config config/application.yaml --output-directory rule
 
-      - name: Run Jar
-        run:  mvn spring-boot:run -Dspring-boot.run.profiles=${{ steps.defaults.outputs.profile }}
-
-      - name: Upload parser log
+      - name: Upload conversion log
         uses: actions/upload-artifact@v7
         with:
-          name: parser.log
-          path: logs/parser.log
+          name: conversion.log
+          path: conversion.log
 
-      - name: Clean up
-        if: steps.defaults.outputs.release-branch != ''
+      - name: Prepare release contents
         run: |
-          find . -maxdepth 1 ! -name 'rule' ! -name '.' ! -name '.git' -exec rm -rf {} +
+          find . -maxdepth 1 ! -name 'rule' ! -name '.' ! -name '.git' -exec rm -rf -- {} +
           mv rule/* .
           rm -rf rule
 
-      - name: Set current date
-        id: date
-        if: steps.defaults.outputs.release-branch != ''
-        run: echo "date=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
-
-      - name: Commit Changes
-        id: commit
-        if: steps.defaults.outputs.release-branch != ''
+      - name: Commit release contents
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          commit_message: 'chore: ✅ auto release at ${{ steps.date.outputs.date }}'
-          branch: ${{ steps.defaults.outputs.release-branch }}
-          skip_dirty_check: true
+          commit_message: 'chore: update filters'
+          branch: ${{ inputs.release-branch || 'release' }}
           push_options: '--force'
           create_branch: true
           skip_fetch: true
           skip_checkout: true
-          commit_options: '--allow-empty'
-
-      - name: Delete Workflow Runs
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{secrets.GITHUB_TOKEN}}
-          repository: ${{ github.repository }}
-          retain_days: 1
-          keep_minimum_runs: 1

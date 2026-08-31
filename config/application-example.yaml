@@ -1,126 +1,122 @@
-##########################################
-## !!! 示例配置，修改无效 !!!
-## !!! example config, modify invalid !!!
-##########################################
+# AD Filter Subscriber 参考配置
+# 复制为 config/application.yaml 后按需修改。
+
 application:
-
-  # 规则源配置
-  # ！使用前请删除下方示例配置, 注意缩进
+  # 规则源列表，至少需要一项。
   input:
+    # 远程规则源示例。
+    - name: upstream
+      # name 与 path 必填；name 在 input 中不可重复。
+      path: https://example.org/filter.txt
+      # 可选，默认 easylist。
+      # 可用值：easylist、dns、hosts、dnsmasq、smartdns、clash、sing-box。
+      type: easylist
+      # EasyList/DNS：abp、adguard、ubo；Clash：classical、domain、ipcidr。
+      # 其他格式无需配置 dialect。
+      dialect: ubo
+      # 可选，默认 0。数值越大，该规则源越先处理。
+      priority: 10
 
-    - name: 'Subscription 1'               #必要参数: 规则名称，请勿重复
-      path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)
-      type: easylist                       #可选参数: 规则类型：easylist (默认)、dnsmasq、clash、smartdns、hosts
-
-    - name: 'Subscription 2'
-      path: 'rule/local.txt'
+    # 本地规则源示例；相对路径基于程序工作目录。
+    - name: local-hosts
+      path: rules/local-hosts.txt
       type: hosts
 
-  #输出配置
   output:
-    #文件头配置，将自动作为注释添加至每个规则文件开始
-    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)、${total} (规则总数)
+    # 可选，默认 rule。所有输出文件都写入该目录。
+    path: rule
+
+    # 可选的全局文件头。支持：
+    # ${name} 文件名、${type} 输出格式、${desc} 文件描述、
+    # ${date} 生成时间、${total} 输出规则数。
+    # sing-box 是严格 JSON，不会写入文件头。
     file_header: |
-      ADFS AdBlock ${type}
+      AD Filter Subscriber ${type}
       Last Modified: ${date}
-      Total Size: ${total}
-      Homepage: https://github.com/fordes123/ad-filters-subscriber/
+      Description: ${desc}
+      Total Rules: ${total}
 
-    #输出规则文件列表 （！注意缩进，且每个类型只能输出一个文件）
+    # 输出文件列表，至少需要一项；生成路径不可重复。
     files:
-      - name: easylist.txt     #必要参数: 文件名
-        type: easylist         #必要参数: 文件类型: easylist、dnsmasq、clash、smartdns、hosts
-        file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
-        desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
-        filter:
-          - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts
-          - wildcard           #通配规则，仅使用通配符
-          - unknown            #其他规则，如使用了正则、高级修饰符号的规则，这些规则目前无法转换为其他格式
-
-        rule:                  #可选参数: 限定此文件使用的规则源，如果不指定则使用 input 中的所有规则源
-          - Subscription 1
-          - Subscription 2
-
-      - name: dns.txt
+      - name: easylist.txt
+        # type 必填；可用值与 input.type 相同。
         type: easylist
-        filter:
-          - basic
-          - wildcard
+        dialect: ubo
+        desc: Browser ad-block rules
+        # 每个文件可通过 file_header 覆盖全局文件头。
+        # file_header: |
+        #   Custom header for ${name}
+        # 可选，仅合并指定的规则源；省略时使用全部规则源。
+        rule:
+          - upstream
+          - local-hosts
 
-      - name: dnsmasq.txt
-        type: dnsmasq
-
-      - name: clash.yaml
-        type: clash
-
-      - name: smartdns.txt
-        type: smartdns
+      - name: adguard-dns.txt
+        type: dns
+        dialect: adguard
+        desc: AdGuard DNS rules
 
       - name: hosts.txt
         type: hosts
+        desc: Hosts rules
 
+      - name: dnsmasq.conf
+        type: dnsmasq
+        desc: dnsmasq rules
 
-  # 程序运行配置（可选）
-  # ！删除即使用默认配置
-  config:
+      - name: smartdns.conf
+        type: smartdns
+        desc: SmartDNS rules
 
-    #获取器配置
-    fetcher:
+      - name: mihomo.yaml
+        type: clash
+        # classical 输出 payload 规则；domain 输出域名集；ipcidr 输出 IP CIDR 集。
+        dialect: classical
+        desc: Mihomo classical rule provider
 
-      http:
-        charset: UTF-8
-        connect-timeout: 10s
-        read-timeout: 30s
-        write-timeout: 30s
-        response-timeout: 30s
-        buffer-size: 4KB
+      - name: sing-box.json
+        type: sing-box
+        desc: sing-box rule set
 
-      local:
-        charset: UTF-8
-        buffer-size: 4KB
+  # 规则源加载配置可整体省略。
+  source-loading:
+    # 本地文件和 HTTP 响应的默认字符集。
+    local-charset: UTF-8
+    http-charset: UTF-8
+    # 本地与 HTTP 输入共用的读取缓冲区，不能小于 1KB。
+    buffer-size: 4KB
+    connect-timeout: 10s
+    request-timeout: 30s
 
-    #解析器配置
-    parser:
+  # 规则处理配置可整体省略。
+  processing:
+    # 0 表示不限制；启用上限时，min-rule-length 不能大于 max-rule-length。
+    min-rule-length: 0
+    max-rule-length: 0
+    # 排除精确域名和域名后缀规则；比较时不区分大小写。
+    excluded-domains: [ ]
+    # 示例：
+    # excluded-domains:
+    #   - trusted.example
+    # 允许缩小匹配范围：可能增加漏拦截，不会因此增加误拦截。
+    allow-narrowing: true
+    # 允许放大匹配范围：可能增加误拦截。
+    allow-broadening: false
 
-      # 日志级别
-      # 解析器日志将单独输出到 parser.log 文件
-      log-level: trace
+    dns-validation:
+      # 启用后，仅探测可确定域名的 BLOCK 规则。
+      # 仅有有效 NXDOMAIN 会删除规则；超时或服务器错误会使构建失败。
+      enabled: false
+      # enabled=true 时必填；只能配置一个 DNS 服务器。
+      server: 1.1.1.1
+      port: 53
+      # UDP 查询与 TC 触发的 TCP 重试共用该超时时间。
+      timeout: 1s
+      # 同时在途的查询上限，取值范围 1..1024。
+      concurrency: 128
 
-      # 建议最小规则长度
-      # 一般来说越短的规则杀伤力越大，当超出此长度时，解析器会输出警告日志
-      alert-length: 6
-
-      # 解析器接受的最小规则长度，小于此长度的规则将被认定为无效规则 (0或空为不限制)
-      min-length: 0
-
-      # 解析器接受的最大规则长度，大于此长度的规则将被认定为无效规则 (0或空为不限制)
-      max-length: 1024  # 默认为 1024 这也是 AdGuard 所支持的最大长度
-
-      # 预期总规则数量
-      # 此选项有助于提前分配内存以提高去重性能
-      # 建议留空或设置一个保守值，不可过大
-      expected: 200000
-
-      # 域名探测
-      # 当启用此项时，解析器将尝试通过 DNS 解析来判断规则是否有效
-      # ! 此功能将导致处理时间大幅延长
-      dns-probe:
-        enable: false   # 是否启用
-        timeout: 2s   # 查询超时
-        parallel: 10    # 并发查询数
-        cache-ttl-min: 600s            # 缓存最小TTL
-        cache-ttl-max: 86400s          # 缓存最大TTL
-        cache-negative-ttl: 300s       # 失败结果缓存TTL
-        # 使用的 DNS 服务器
-        # 多个之间具备优先级，为空则使用系统默认DNS
-        provider:
-          - host: 223.5.5.5
-            port: 53 # port 可以省略，默认为 53
-
-          - host: 114.114.114.114
-
-      # 排除域 (白名单)
-      # 若规则目标域名在此列表中，则直接排除
-      # ! 只适用可以被解析的规则
-      excludes:
-        - "www.example.org"
+  # 转换日志配置可整体省略。
+  logging:
+    # 是否将成功转换的逐规则记录写入 conversion.log；默认 false。
+    # 失败记录始终写入。
+    include-successful-conversions: false

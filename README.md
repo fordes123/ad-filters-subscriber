@@ -1,126 +1,90 @@
-<div align="center">
-<h1>AD Filter Subscriber</h1>
-  <p>
-    广告过滤规则订阅器，整合不同来源的规则，帮助你快速构建属于自己的规则集~
-  </p>
-<!-- Badges -->
-<p>
-  <img src="https://img.shields.io/github/last-commit/fordes123/ad-filters-subscriber?style=flat-square" alt="last update" />
-  <img src="https://img.shields.io/github/forks/fordes123/ad-filters-subscriber?style=flat-square" alt="forks" />
-  <img src="https://img.shields.io/github/stars/fordes123/ad-filters-subscriber?style=flat-square" alt="stars" />
-  <img src="https://img.shields.io/github/issues/fordes123/ad-filters-subscriber?style=flat-square" alt="open issues" />
-  <img src="https://img.shields.io/github/license/fordes123/ad-filters-subscriber?style=flat-square" alt="license" />
-</p>
+# AD Filter Subscriber
 
-<h4>
-    <a href="#a">项目说明</a>
-  <span> · </span>
-    <a href="#b">快速开始</a>
-  <span> · </span>
-    <a href="#c">规则订阅</a>
-  <span> · </span>
-    <a href="#d">问题反馈</a>
-  </h4>
-</div>
+[![Verify](https://github.com/fordes123/ad-filters-subscriber/actions/workflows/verify.yml/badge.svg)](https://github.com/fordes123/ad-filters-subscriber/actions/workflows/verify.yml)
+[![Version](https://img.shields.io/github/v/release/fordes123/ad-filters-subscriber?sort=semver)](https://github.com/fordes123/ad-filters-subscriber/releases)
+[![License](https://img.shields.io/github/license/fordes123/ad-filters-subscriber)](./LICENSE)
 
-[English](./README_en.md) | 中文
-<h2 id="a">📔 项目说明</h2>
+本项目用于聚合不同来源、不同格式的广告过滤规则，并按目标格式完成筛选、去重与转换。
 
-本项目旨在聚合不同来源、不同格式的广告过滤规则，自由的进行转换和整合。
-> ⚠️ 新版不再兼容原配置格式，迁移前务必注意
-#### 支持的规则格式
 - [x] easylist
-- [x] dns (AdGuardHome)
+- [x] dns
 - [x] dnsmasq
-- [x] clash
+- [x] clash (mihomo)
 - [x] smartdns
+- [x] sing-box
 - [x] hosts
 
-#### 注意事项
-1. 仅支持基本规则转换，即域名、通配域名构成的规则，对形如 `||example.org^$popup` 等规则无法转换(合并、去重不受影响) 
-2. 接受不可避免的缩限，如 `||example.org^` 将拦截 example.org 及其所有子域，但将其转换为 hosts 格式时，将无法匹配子域名。
-3. 规则有效性检测基于域名解析，因此仅支持基本规则 (只能检测当前域有效性，而无法检测其是否存在有效子域，故此功能可能存在误杀)。
+> [!WARNING]
+> - 并非所有类型规则之间都可以进行转换，且无法精确转换的规则，默认允许缩小匹配范围。
+> - 规则有效性检测基于域名解析，仅适用于可提取确定域名的规则。
 
-<h2 id="b">🛠️ 快速开始</h2>
+## 快速开始
 
-### 示例配置
+### CLI
+
+从 [Releases](https://github.com/fordes123/ad-filters-subscriber/releases) 获取二进制程序：
+
+```bash
+# 使用默认配置构建
+adfs build
+
+# 使用指定配置构建
+adfs build --config path/to/application.yaml
+
+# 检查本地规则文件
+adfs check --dialect=ABP rules.txt
+
+# 检查单条规则
+adfs inspect --dialect=UBO '@@||example.com^$script,important'
+```
+
+### GitHub Actions
+
+1. Fork 仓库并修改 `config/application.yaml`。
+2. 在 **Actions** 页面启用工作流。
+3. 运行 **Update Filters**，或等待每 8 小时自动执行。
+
+产物默认提交至 `release` 分支。手动运行时可通过 `release-branch` 指定目标分支。
+
+```text
+https://raw.githubusercontent.com/<owner>/ad-filters-subscriber/release/<file>
+```
+
+## 示例配置
 
 ```yaml
 application:
-  
-  # 输入配置
+  # 输入规则源；可配置多个
   input:
-    - name: 'Subscription 1'               #可选参数: 规则名称，如无将使用 path 作为名称
-      path: 'https://example.org/rule.txt' #必要参数: 规则 url (http/https) 或 本地文件位置 (绝对/相对路径)
-      type: easylist                       #可选参数: 规则类型：easylist (默认)、dns、dnsmasq、clash、smartdns、hosts
+    - name: upstream                        # 唯一的规则源名称
+      path: https://example.org/filter.txt  # HTTP、HTTPS 或本地文件路径
+      type: easylist                        # 规则格式 easylist、dns、hosts、dnsmasq、smartdns、clash、sing-box
+      dialect: ubo                          # EasyList/DNS 方言：abp、adguard、ubo
 
-    - name: 'Subscription 2'
-      path: 'rule/local.txt'
-      type: hosts
-
-  # 输出配置
   output:
-    #文件头配置，将自动作为注释添加至每个规则文件开始
-    #可使用占位符 ${name}、${type}、${desc} 以及 ${date} (当前日期)、${total} (规则总数)
-    file_header: |
-      ADFS AdBlock ${type}
-      Last Modified: ${date}
-      Total Size: ${total}
-      Homepage: https://github.com/fordes123/ad-filters-subscriber/
-      
+    path: rule                              # 输出目录，默认为 rule
     files:
-      - name: easylist.txt     #必要参数: 文件名
-        type: easylist         #必要参数: 文件类型: easylist、dns、dnsmasq、clash、smartdns、hosts
-        file_header:           #可选参数: 文件头配置，将自动作为注释添加至每个规则文件开始 (此处优先于 output.file_header)
-        desc: 'ADFS EasyList'  #可选参数: 文件描述，可在file_header中通过 ${} 中使用
-        filter:
-          - basic              #基本规则，不包含任何控制、匹配符号, 可以转换为 hosts
-          - wildcard           #通配规则，仅使用通配符
-          - unknown            #其他规则，如使用了正则、高级修饰符号的规则，这些规则目前无法转换为其他格式
-        rule:                  #可选参数: 限定此文件使用的规则源，如果不指定则使用 input 中的所有规则源
-          - Subscription 1
-          - Subscription 2     
+      - name: easylist.txt                  # 输出文件名
+        type: easylist                      # 输出格式 easylist、dns、hosts、dnsmasq、smartdns、clash、sing-box
+        dialect: ubo                        # EasyList/DNS 方言：abp、adguard、ubo
+
+      - name: hosts
+        type: hosts
+
+      - name: clash.yaml
+        type: clash
+        dialect: domain                     # Clash 方言：classical（默认）、domain、ipcidr
+
+      - name: sing-box.json
+        type: sing-box
 ```
 
----
-本程序基于 `Java25` 编写，使用 `Maven` 进行构建，你可以参照[示例配置](./config/application-example.yaml)，编辑 `config/application.yaml`
-，并通过以下任意一种方式快速开始：
+完整字段、默认值和说明见
+[`config/application-example.yaml`](./config/application-example.yaml)。
 
-#### **本地调试**
+> [!TIP]
+> - `sing-box` 产物是严格 JSON，因此不会写入 `file_header` 注释。
 
-```bash
-git clone https://github.com/fordes123/ad-filters-subscriber.git
-cd ad-filters-subscriber
-mvn clean
-mvn spring-boot:run
-```
+## License
 
-#### **Github Action**
-
-- fork 本项目
-- 自定义规则订阅 (可选)
-    - 参照[示例配置](./config/application-example.yaml)，修改配置文件: `config/application.yaml`
-- 打开 `Github Action` 页面，选中左侧 `Update Filters` 授权 `Workflow` 定时执行(⚠ 重要步骤)
-- 点击 `Run workflow` 或等待自动执行。执行完成后规则将生成在 `release` 分支
-
-#### **Codespaces**
-
-- 登录 `Github`，点击本仓库右上角 `Code` 按钮，选择并创建新的 `Codespaces`
-- 等待 `Codespaces` 启动，即可直接对本项目进行调试
-
-<h2 id="c">🎯 规则订阅</h2>
-
-**⚠ 本仓库不再提供规则订阅，我们更推荐 fork 本项目自行构建规则集.**
-
-下面是使用了本项目进行构建的规则仓库，可在其中寻找合适的规则订阅:
-<details>
-<summary>点击查看</summary>
-<ul>
-    <br/>
-    <li><a href="https://github.com/xndeye/adblock_list/">xndeye/adblock_list</a></li>
-</ul>
-</details>
-
-<h2 id="d">💬 问题反馈</h2>
-
-- 👉 [issues](https://github.com/fordes123/ad-filters-subscriber/issues)
+[MIT](./LICENSE)
