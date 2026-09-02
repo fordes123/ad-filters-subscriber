@@ -11,4 +11,17 @@ public enum DialectProfile {
     DialectProfile(String name) {
         this.name = name;
     }
+
+    public static DialectProfile parse(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Adblock 方言不能为空");
+        }
+        String name = value.trim();
+        for (DialectProfile profile : values()) {
+            if (profile.name.equalsIgnoreCase(name)) {
+                return profile;
+            }
+        }
+        throw new IllegalArgumentException("未知 Adblock 方言: " + value);
+    }
 }

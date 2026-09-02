@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,7 +39,7 @@ final class BuildPlanTest {
     @Test
     void validatesSourceLoadingProcessingAndDnsBoundaries() {
         BuildPlan.DnsValidationPolicy disabledDns = new BuildPlan.DnsValidationPolicy(
-                false, Duration.ofSeconds(1), 1, Optional.empty());
+                false, Duration.ofSeconds(1), 1, List.of());
         assertMessage(() -> new BuildPlan.ProcessingPolicy(
                 -1, 0, Set.of(), true, false, disabledDns), "不能小于 0");
         assertMessage(() -> new BuildPlan.ProcessingPolicy(
@@ -68,13 +67,18 @@ final class BuildPlanTest {
         ), "localBufferSize");
 
         assertMessage(() -> new BuildPlan.DnsValidationPolicy(
-                true, Duration.ofSeconds(1), 1, Optional.empty()), "必须配置 server");
+                true, Duration.ofSeconds(1), 1, List.of()), "必须配置 servers");
         assertMessage(() -> new BuildPlan.DnsValidationPolicy(
-                false, Duration.ofSeconds(1), 0, Optional.empty()), "1..1024");
+                false, Duration.ofSeconds(1), 0, List.of()), "1..1024");
         assertMessage(() -> new BuildPlan.DnsValidationPolicy(
-                false, Duration.ofMillis(Integer.MAX_VALUE).plusMillis(1), 1, Optional.empty()),
+                false, Duration.ofMillis(Integer.MAX_VALUE).plusMillis(1), 1, List.of()),
                 "不能超过");
-        assertMessage(() -> new BuildPlan.DnsServer("127.0.0.1", 0), "1..65535");
+        assertMessage(() -> new BuildPlan.DnsValidationPolicy(
+                false,
+                Duration.ofSeconds(1),
+                1,
+                List.of("127.0.0.1:53", "127.0.0.1:53")
+        ), "不能重复");
     }
 
     private static BuildPlan plan(
@@ -99,7 +103,7 @@ final class BuildPlanTest {
                         true,
                         false,
                         new BuildPlan.DnsValidationPolicy(
-                                false, Duration.ofSeconds(1), 1, Optional.empty())
+                                false, Duration.ofSeconds(1), 1, List.of())
                 ),
                 BuildPlan.LoggingPolicy.defaults()
         );

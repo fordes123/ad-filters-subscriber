@@ -21,7 +21,6 @@ import org.fordes.adfs.ast.ScriptletSyntax;
 import org.fordes.adfs.syntax.DecodeResult;
 import org.fordes.adfs.syntax.LineSlice;
 import org.fordes.adfs.syntax.ParseDiagnostic;
-import org.fordes.adfs.syntax.RuleDecoder;
 import org.fordes.adfs.syntax.Span;
 import org.fordes.adfs.syntax.classifier.FastClassifier;
 import org.fordes.adfs.syntax.classifier.RuleClassification;
@@ -34,20 +33,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-public final class AdblockDecoder implements RuleDecoder<RuleAst> {
+public final class AdblockDecoder {
 
-    private final FastClassifier classifier;
-
-    public AdblockDecoder() {
-        this.classifier = new FastClassifier();
-    }
-
-    @Override
     public DecodeResult<RuleAst> decode(LineSlice line, DialectProfile dialect) {
         Objects.requireNonNull(line, "line 不能为空");
         Objects.requireNonNull(dialect, "dialect 不能为空");
 
-        RuleClassification classification = classifier.classify(line);
+        RuleClassification classification = FastClassifier.classify(line);
         try {
             RuleAst ast = switch (classification.kind()) {
                 case EMPTY -> new EmptyAst(line, dialect);
@@ -296,10 +288,6 @@ public final class AdblockDecoder implements RuleDecoder<RuleAst> {
             cursor++;
         }
 
-        if (cursor >= line.length()) {
-            throw invalid("EMPTY_NETWORK_PATTERN", cursor, "network pattern 不能为空");
-        }
-
         int regexEnd = findRegexEnd(line, cursor);
         boolean regex = regexEnd >= 0;
         int optionMarker;
@@ -341,9 +329,7 @@ public final class AdblockDecoder implements RuleDecoder<RuleAst> {
         }
 
         if (patternStart == patternEnd
-                && (dialect != DialectProfile.ADGUARD
-                || leftAnchor != NetworkAnchor.NONE
-                || modifierBlock.isEmpty())) {
+                && (leftAnchor != NetworkAnchor.NONE || modifierBlock.isEmpty())) {
             throw invalid("EMPTY_NETWORK_PATTERN", patternStart, "network pattern 不能为空");
         }
 

@@ -11,6 +11,10 @@ public record CanonicalRule(
         long featureMask
 ) {
 
+    public static final long FEATURE_IMPORTANT = 1L;
+    public static final long FEATURE_ALL = 1L << 1;
+    private static final long SUPPORTED_FEATURES = FEATURE_IMPORTANT | FEATURE_ALL;
+
     public CanonicalRule {
         Objects.requireNonNull(matchType, "matchType 不能为空");
         Objects.requireNonNull(value, "value 不能为空");
@@ -25,6 +29,13 @@ public record CanonicalRule(
         if (action != Action.REWRITE && destination.isPresent()) {
             throw new IllegalArgumentException("非 rewrite rule 不得提供 destination");
         }
+        if ((featureMask & ~SUPPORTED_FEATURES) != 0) {
+            throw new IllegalArgumentException("包含未知规则特性位: " + featureMask);
+        }
+    }
+
+    public boolean hasFeature(long feature) {
+        return (featureMask & feature) != 0;
     }
 
     public enum MatchType {

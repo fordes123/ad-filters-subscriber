@@ -26,7 +26,7 @@ final class CliSmokeTest {
         int exitCode = commandLine(output).execute("--version");
 
         assertEquals(0, exitCode);
-        assertTrue(output.toString().contains("2.0.0-SNAPSHOT"));
+        assertTrue(output.toString().contains("AD Filter Subscriber "));
     }
 
     @Test
@@ -60,8 +60,8 @@ final class CliSmokeTest {
         int exitCode = commandLine.execute("check", source.toString());
 
         assertEquals(0, exitCode);
-        assertTrue(output.toString().contains("raw=3 decoded=3 opaque=0 invalid=0"));
-        assertTrue(output.toString().contains("total raw=3 decoded=3 opaque=0 invalid=0"));
+        assertTrue(output.toString().contains("raw=3 decoded=3 invalid=0"));
+        assertTrue(output.toString().contains("total raw=3 decoded=3 invalid=0"));
     }
 
     @Test
@@ -78,7 +78,7 @@ final class CliSmokeTest {
         int exitCode = commandLine.execute("check", "--dialect=UBO", source.toString());
 
         assertEquals(0, exitCode);
-        assertTrue(output.toString().contains("raw=2 decoded=1 opaque=0 invalid=0"));
+        assertTrue(output.toString().contains("raw=2 decoded=1 invalid=0"));
     }
 
     @Test

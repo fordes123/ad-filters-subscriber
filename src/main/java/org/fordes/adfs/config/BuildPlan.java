@@ -1,16 +1,20 @@
 package org.fordes.adfs.config;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.fordes.adfs.syntax.RuleFormat;
+import org.fordes.adfs.syntax.RuleProfile;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
 import org.fordes.adfs.syntax.clash.ClashDialect;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 public record BuildPlan(
@@ -70,30 +74,66 @@ public record BuildPlan(
         }
     }
 
+    public BuildPlan withOutputDirectory(Path directory) {
+        Objects.requireNonNull(directory, "outputDirectory 不能为空");
+        Path target = directory.toAbsolutePath().normalize();
+        List<OutputSpec> overridden = outputs.stream()
+                .map(output -> new OutputSpec(
+                        target.resolve(output.path().getFileName()),
+                        output.profile(),
+                        output.description(),
+                        output.header(),
+                        output.sources()
+                ))
+                .toList();
+        return new BuildPlan(sources, overridden, sourceLoading, processing, logging);
+    }
+
     public record SourceSpec(
             String id,
             String location,
-            RuleFormat format,
-            DialectProfile dialect,
-            ClashDialect clashDialect,
+            RuleProfile profile,
             int priority
     ) {
 
         public SourceSpec {
             requireText(id, "source.id");
             requireText(location, "source.location");
-            Objects.requireNonNull(format, "source.format 不能为空");
-            Objects.requireNonNull(dialect, "source.dialect 不能为空");
-            Objects.requireNonNull(clashDialect, "source.clashDialect 不能为空");
+            Objects.requireNonNull(profile, "source.profile 不能为空");
+        }
+
+        public SourceSpec(
+                String id,
+                String location,
+                RuleFormat format,
+                DialectProfile dialect,
+                ClashDialect clashDialect,
+                int priority
+        ) {
+            this(id, location, RuleProfile.of(format, dialect, clashDialect), priority);
+        }
+
+        public RuleFormat format() {
+            return profile.format();
+        }
+
+        public DialectProfile dialect() {
+            return profile instanceof RuleProfile.Adblock adblock
+                    ? adblock.dialect()
+                    : DialectProfile.ADBLOCK_BASE;
+        }
+
+        public ClashDialect clashDialect() {
+            return profile instanceof RuleProfile.Clash clash
+                    ? clash.dialect()
+                    : ClashDialect.CLASSICAL;
         }
 
     }
 
     public record OutputSpec(
             Path path,
-            RuleFormat format,
-            DialectProfile dialect,
-            ClashDialect clashDialect,
+            RuleProfile profile,
             String description,
             String header,
             Set<String> sources
@@ -101,14 +141,46 @@ public record BuildPlan(
 
         public OutputSpec {
             Objects.requireNonNull(path, "output.path 不能为空");
-            Objects.requireNonNull(format, "output.format 不能为空");
-            Objects.requireNonNull(dialect, "output.dialect 不能为空");
-            Objects.requireNonNull(clashDialect, "output.clashDialect 不能为空");
+            Objects.requireNonNull(profile, "output.profile 不能为空");
             Objects.requireNonNull(description, "output.description 不能为空");
             Objects.requireNonNull(header, "output.header 不能为空");
             Objects.requireNonNull(sources, "output.sources 不能为空");
             path = path.toAbsolutePath().normalize();
             sources = Set.copyOf(sources);
+        }
+
+        public OutputSpec(
+                Path path,
+                RuleFormat format,
+                DialectProfile dialect,
+                ClashDialect clashDialect,
+                String description,
+                String header,
+                Set<String> sources
+        ) {
+            this(
+                    path,
+                    RuleProfile.of(format, dialect, clashDialect),
+                    description,
+                    header,
+                    sources
+            );
+        }
+
+        public RuleFormat format() {
+            return profile.format();
+        }
+
+        public DialectProfile dialect() {
+            return profile instanceof RuleProfile.Adblock adblock
+                    ? adblock.dialect()
+                    : DialectProfile.ADBLOCK_BASE;
+        }
+
+        public ClashDialect clashDialect() {
+            return profile instanceof RuleProfile.Clash clash
+                    ? clash.dialect()
+                    : ClashDialect.CLASSICAL;
         }
 
     }
@@ -134,6 +206,29 @@ public record BuildPlan(
             excludedDomains = excludedDomains.stream()
                     .map(value -> value.toLowerCase(java.util.Locale.ROOT))
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        }
+
+        @JsonCreator
+        public static ProcessingPolicy fromConfiguration(
+                @JsonProperty("min-rule-length") Integer minRuleLength,
+                @JsonProperty("max-rule-length") Integer maxRuleLength,
+                @JsonProperty("excluded-domains") Set<String> excludedDomains,
+                @JsonProperty("allow-narrowing") Boolean allowNarrowing,
+                @JsonProperty("allow-broadening") Boolean allowBroadening,
+                @JsonProperty("dns-validation") DnsValidationPolicy dnsValidation
+        ) {
+            return new ProcessingPolicy(
+                    minRuleLength == null ? 0 : minRuleLength,
+                    maxRuleLength == null ? 0 : maxRuleLength,
+                    excludedDomains == null ? Set.of() : excludedDomains,
+                    allowNarrowing == null || allowNarrowing,
+                    allowBroadening != null && allowBroadening,
+                    dnsValidation == null ? DnsValidationPolicy.defaults() : dnsValidation
+            );
+        }
+
+        public static ProcessingPolicy defaults() {
+            return fromConfiguration(null, null, null, null, null, null);
         }
     }
 
@@ -164,18 +259,45 @@ public record BuildPlan(
                 throw new IllegalArgumentException("httpBufferSize 不能小于 1024");
             }
         }
+
+        @JsonCreator
+        public static SourceLoadingPolicy fromConfiguration(
+                @JsonProperty("local-charset") String localCharset,
+                @JsonProperty("http-charset") String httpCharset,
+                @JsonProperty("buffer-size") Integer bufferSize,
+                @JsonProperty("connect-timeout") Integer connectTimeoutMillis,
+                @JsonProperty("request-timeout") Integer requestTimeoutMillis
+        ) {
+            int size = bufferSize == null ? 4 * 1024 : bufferSize;
+            return new SourceLoadingPolicy(
+                    charset(localCharset, StandardCharsets.UTF_8),
+                    charset(httpCharset, StandardCharsets.UTF_8),
+                    Duration.ofMillis(connectTimeoutMillis == null ? 10_000 : connectTimeoutMillis),
+                    Duration.ofMillis(requestTimeoutMillis == null ? 30_000 : requestTimeoutMillis),
+                    size,
+                    size
+            );
+        }
+
+        public static SourceLoadingPolicy defaults() {
+            return fromConfiguration(null, null, null, null, null);
+        }
+
+        private static Charset charset(String configured, Charset fallback) {
+            return Charset.forName(configured == null ? fallback.name() : configured);
+        }
     }
 
     public record DnsValidationPolicy(
             boolean enabled,
             Duration timeout,
             int concurrency,
-            Optional<DnsServer> server
+            List<String> servers
     ) {
 
         public DnsValidationPolicy {
             Objects.requireNonNull(timeout, "dns timeout 不能为空");
-            Objects.requireNonNull(server, "dns server 不能为空");
+            Objects.requireNonNull(servers, "dns servers 不能为空");
             if (timeout.isZero() || timeout.isNegative()) {
                 throw new IllegalArgumentException("dns timeout 必须大于 0");
             }
@@ -186,9 +308,40 @@ public record BuildPlan(
                 throw new IllegalArgumentException(
                         "dns concurrency 必须位于 1.." + MAX_DNS_CONCURRENCY);
             }
-            if (enabled && server.isEmpty()) {
-                throw new IllegalArgumentException("DNS 校验启用时必须配置 server");
+            List<String> normalizedServers = new ArrayList<>(servers.size());
+            for (String server : servers) {
+                Objects.requireNonNull(server, "dns server endpoint 不能为空");
+                if (server.isBlank()) {
+                    throw new IllegalArgumentException("dns server endpoint 不能为空");
+                }
+                normalizedServers.add(server.trim());
             }
+            if (normalizedServers.size() != new HashSet<>(normalizedServers).size()) {
+                throw new IllegalArgumentException("dns server endpoint 不能重复");
+            }
+            if (enabled && normalizedServers.isEmpty()) {
+                throw new IllegalArgumentException("DNS 校验启用时必须配置 servers");
+            }
+            servers = List.copyOf(normalizedServers);
+        }
+
+        @JsonCreator
+        public static DnsValidationPolicy fromConfiguration(
+                @JsonProperty("enabled") Boolean enabled,
+                @JsonProperty("servers") List<String> servers,
+                @JsonProperty("timeout") Integer timeoutMillis,
+                @JsonProperty("concurrency") Integer concurrency
+        ) {
+            return new DnsValidationPolicy(
+                    enabled != null && enabled,
+                    Duration.ofMillis(timeoutMillis == null ? 1_000 : timeoutMillis),
+                    concurrency == null ? 128 : concurrency,
+                    servers == null ? List.of() : servers
+            );
+        }
+
+        public static DnsValidationPolicy defaults() {
+            return fromConfiguration(null, null, null, null);
         }
     }
 
@@ -200,6 +353,17 @@ public record BuildPlan(
 
         public static LoggingPolicy defaults() {
             return new LoggingPolicy(LogLevel.INFO);
+        }
+
+        @JsonCreator
+        public static LoggingPolicy fromConfiguration(@JsonProperty("level") String configured) {
+            String levelName = configured == null ? LogLevel.INFO.name : configured.trim();
+            for (LogLevel level : LogLevel.values()) {
+                if (level.name.equalsIgnoreCase(levelName)) {
+                    return new LoggingPolicy(level);
+                }
+            }
+            throw new IllegalArgumentException("未知日志等级: " + configured);
         }
     }
 
@@ -215,16 +379,6 @@ public record BuildPlan(
 
         LogLevel(String name) {
             this.name = name;
-        }
-    }
-
-    public record DnsServer(String host, int port) {
-
-        public DnsServer {
-            requireText(host, "dns server host");
-            if (port < 1 || port > 65535) {
-                throw new IllegalArgumentException("dns server port 必须位于 1..65535");
-            }
         }
     }
 

@@ -9,13 +9,11 @@ import org.fordes.adfs.ast.HtmlFilterAst;
 import org.fordes.adfs.ast.MetadataAst;
 import org.fordes.adfs.ast.NetworkModifierAst;
 import org.fordes.adfs.ast.NetworkRuleAst;
-import org.fordes.adfs.ast.OpaqueAst;
 import org.fordes.adfs.ast.PreprocessorDirectiveAst;
 import org.fordes.adfs.ast.RuleAst;
 import org.fordes.adfs.ast.ScriptletRuleAst;
 import org.fordes.adfs.syntax.DecodeResult;
 import org.fordes.adfs.syntax.LineSlice;
-import org.fordes.adfs.syntax.RuleDecoder;
 import org.fordes.adfs.syntax.Span;
 import org.fordes.adfs.syntax.adblock.AdblockDecoder;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
@@ -48,7 +46,7 @@ public final class InspectCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         LineSlice line = LineSlice.fromUtf8(rule);
-        RuleDecoder<RuleAst> decoder = new AdblockDecoder();
+        AdblockDecoder decoder = new AdblockDecoder();
         DecodeResult<RuleAst> result = decoder.decode(line, dialect);
 
         if (result instanceof DecodeResult.Invalid<RuleAst> invalid) {
@@ -86,7 +84,6 @@ public final class InspectCommand implements Callable<Integer> {
                     "METADATA", metadata.source(), metadata.dialect(), "body", metadata.body());
             case PreprocessorDirectiveAst directive -> printDirective(directive);
             case EmptyAst empty -> printEmpty(empty);
-            case OpaqueAst opaque -> printOpaque(opaque);
         }
     }
 
@@ -158,14 +155,6 @@ public final class InspectCommand implements Callable<Integer> {
     private void printEmpty(EmptyAst ast) {
         PrintWriter out = spec.commandLine().getOut();
         printHeader(out, "EMPTY", ast.dialect().name);
-        out.println("raw=" + ast.source().materialize());
-    }
-
-    private void printOpaque(OpaqueAst ast) {
-        PrintWriter out = spec.commandLine().getOut();
-        out.println("status=opaque");
-        out.println("kind=" + ast.kind().name);
-        out.println("dialect=" + ast.dialect().name);
         out.println("raw=" + ast.source().materialize());
     }
 

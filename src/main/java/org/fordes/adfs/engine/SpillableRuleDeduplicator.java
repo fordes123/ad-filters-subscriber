@@ -1,14 +1,11 @@
 package org.fordes.adfs.engine;
 
-import org.fordes.adfs.model.RuleRecord;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,7 +22,6 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
     private static final int MAX_PARTITION_DEPTH = 8;
     private static final int MERGE_FAN_IN = 32;
     private static final int BUFFER_SIZE = 32 * 1024;
-    private static final int MAX_STRING_BYTES = 64 * 1024 * 1024;
     private static final long BASE_HASH_SEED = 0x9E3779B97F4A7C15L;
     private static final int RECORD = 1;
     private static final int END = 0;
@@ -49,21 +45,20 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
         this.inMemory = new LinkedHashMap<>();
     }
 
-    void add(long sequence, String content, RuleRecord origin) throws IOException {
+    void add(long sequence, String dedupKey, String content) throws IOException {
         if (finished) {
             throw new IOException("去重器已经完成");
         }
         Candidate candidate = new Candidate(
                 sequence,
-                Objects.requireNonNull(content, "content 不能为空"),
-                Objects.requireNonNull(origin, "origin 不能为空").sourceId(),
-                origin.raw()
+                Objects.requireNonNull(dedupKey, "dedupKey 不能为空"),
+                Objects.requireNonNull(content, "content 不能为空")
         );
         if (partitions != null) {
             partitions.write(candidate, 0);
             return;
         }
-        if (inMemory.putIfAbsent(content, candidate) != null) {
+        if (inMemory.putIfAbsent(dedupKey, candidate) != null) {
             return;
         }
         estimatedMemory += estimateBytes(candidate);
@@ -143,7 +138,7 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
         try (CandidateReader reader = new CandidateReader(partition)) {
             Candidate candidate;
             while ((candidate = reader.read()) != null) {
-                unique.putIfAbsent(candidate.content(), candidate);
+                unique.putIfAbsent(candidate.dedupKey(), candidate);
             }
         }
         Path run = workspace.createFile("winner", ".segment");
@@ -190,9 +185,8 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
 
     private static long estimateBytes(Candidate candidate) {
         return 96L
-                + candidate.content().length() * 2L
-                + candidate.sourceId().length() * 2L
-                + candidate.raw().length() * 2L;
+                + candidate.dedupKey().length() * 2L
+                + candidate.content().length() * 2L;
     }
 
     private static long hash(String value, int depth) {
@@ -209,12 +203,14 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
         return result ^ result >>> 33;
     }
 
-    record Candidate(long sequence, String content, String sourceId, String raw) {
+    record Candidate(long sequence, String dedupKey, String content) {
 
         Candidate {
+            Objects.requireNonNull(dedupKey, "dedupKey 不能为空");
             Objects.requireNonNull(content, "content 不能为空");
-            Objects.requireNonNull(sourceId, "sourceId 不能为空");
-            Objects.requireNonNull(raw, "raw 不能为空");
+            if (dedupKey.isBlank() || content.isBlank()) {
+                throw new IllegalArgumentException("dedupKey/content 不能为空");
+            }
         }
     }
 
@@ -328,7 +324,7 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
             if (closed) {
                 throw new IOException("去重分区已经关闭");
             }
-            int index = (int) hash(candidate.content(), depth) & PARTITION_MASK;
+            int index = (int) hash(candidate.dedupKey(), depth) & PARTITION_MASK;
             if (writers[index] == null) {
                 paths[index] = workspace.createFile(category, "-" + index + ".segment");
                 writers[index] = new CandidateWriter(paths[index]);
@@ -389,9 +385,8 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
             }
             output.writeByte(RECORD);
             output.writeLong(candidate.sequence());
+            writeString(output, candidate.dedupKey());
             writeString(output, candidate.content());
-            writeString(output, candidate.sourceId());
-            writeString(output, candidate.raw());
         }
 
         @Override
@@ -439,7 +434,6 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
             return new Candidate(
                     sequence,
                     readString(input, path),
-                    readString(input, path),
                     readString(input, path)
             );
         }
@@ -451,21 +445,10 @@ final class SpillableRuleDeduplicator implements AutoCloseable {
     }
 
     private static void writeString(DataOutputStream output, String value) throws IOException {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        output.writeInt(bytes.length);
-        output.write(bytes);
+        BinaryIO.writeString(output, value);
     }
 
     private static String readString(DataInputStream input, Path path) throws IOException {
-        int length = input.readInt();
-        if (length < 0 || length > MAX_STRING_BYTES) {
-            throw new IOException("去重记录字符串长度无效: path=" + path + ", length=" + length);
-        }
-        byte[] bytes = input.readNBytes(length);
-        if (bytes.length != length) {
-            throw new IOException("去重记录被截断: path=" + path + ", expected=" + length
-                    + ", actual=" + bytes.length);
-        }
-        return new String(bytes, StandardCharsets.UTF_8);
+        return BinaryIO.readString(input, path, "去重记录字符串");
     }
 }

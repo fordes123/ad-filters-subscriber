@@ -26,4 +26,4 @@ jobs:
       - name: Verify
         run: |
           mvn -B verify
-          java -jar "$(find target -maxdepth 1 -name 'adfs-*.jar' ! -name '*-shaded.jar')" --version
+          java -jar "$(find target -maxdepth 1 -name 'adfs-*.jar')" --version

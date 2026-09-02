@@ -40,8 +40,7 @@ public record AdblockExtendedRule(
         UBO_HTML("ubo-html", false),
         ADGUARD_HTML("adguard-html", false),
         ADGUARD_JAVASCRIPT("adguard-javascript", false),
-        DIALECT_SPECIFIC_EXTENSION("dialect-specific-extension", false),
-        OPAQUE("opaque", false);
+        DIALECT_SPECIFIC_EXTENSION("dialect-specific-extension", false);
 
         public final String name;
         private final boolean scriptlet;

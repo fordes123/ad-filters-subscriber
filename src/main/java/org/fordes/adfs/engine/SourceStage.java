@@ -8,7 +8,7 @@ import java.util.Objects;
 record SourceStage(
         BuildPlan.SourceSpec source,
         Path segment,
-        BuildEngine.SourceReport report
+        BuildReport.Source report
 ) {
 
     SourceStage {

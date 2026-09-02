@@ -3,7 +3,7 @@ package org.fordes.adfs.cli;
 import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.config.ConfigLoader;
 import org.fordes.adfs.engine.BuildEngine;
-import org.fordes.adfs.logging.LoggingConfigurator;
+import org.fordes.adfs.engine.BuildReport;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
@@ -13,8 +13,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.Callable;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Command(
         name = "build",
@@ -44,24 +44,24 @@ public final class BuildCommand implements Callable<Integer> {
     @Override
     public Integer call() throws IOException, InterruptedException {
         try {
-            BuildPlan plan = new ConfigLoader().load(configPath, outputDirectory);
-            LoggingConfigurator.configure(plan.logging());
-            Logger logger = LoggingConfigurator.logger(BuildCommand.class);
-            logger.log(
-                    Level.INFO,
-                    "构建开始, 输入源 {0} 个 --> 输出文件 {1} 个: 开始处理",
-                    new Object[]{plan.sources().size(), plan.outputs().size()}
-            );
-            BuildEngine.BuildReport report = new BuildEngine().build(plan);
-            logger.log(
-                    Level.INFO,
-                    "构建完成, 输入源 {0} 个 --> 输出文件 {1} 个: 无效规则 {2} 条，耗时 {3} ms",
-                    new Object[]{
-                            report.sources().size(),
-                            report.outputs().size(),
-                            report.invalidRules(),
-                            report.elapsed().toMillis()
-                    }
+            BuildPlan plan = ConfigLoader.load(configPath);
+            if (outputDirectory.isPresent()) {
+                plan = plan.withOutputDirectory(outputDirectory.orElseThrow());
+            }
+            Logger logger = LoggerFactory.getLogger(BuildCommand.class);
+            BuildReport report;
+            try (TerminalBuildProgress progress = new TerminalBuildProgress(
+                    spec.commandLine().getErr(),
+                    spec.commandLine().getColorScheme().ansi()
+            )) {
+                report = new BuildEngine().build(plan, progress);
+            }
+            logger.info(
+                    "构建完成, 输入源 {} 个 --> 输出文件 {} 个: 无效规则 {} 条，耗时 {} ms",
+                    report.sources().size(),
+                    report.outputs().size(),
+                    report.invalidRules(),
+                    report.elapsed().toMillis()
             );
             new BuildResultPrinter(
                     spec.commandLine().getOut(),

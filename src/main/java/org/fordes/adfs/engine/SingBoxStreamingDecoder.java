@@ -1,7 +1,7 @@
 package org.fordes.adfs.engine;
 
-import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
+import org.fordes.adfs.json.Json;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import org.fordes.adfs.config.BuildPlan;
@@ -26,7 +26,6 @@ final class SingBoxStreamingDecoder {
             "domain_regex",
             "ip_cidr"
     );
-    private static final JsonFactory JSON_FACTORY = JsonFactory.builder().build();
     private static final JsonStringEncoder STRING_ENCODER = JsonStringEncoder.getInstance();
 
     Result decode(
@@ -40,12 +39,12 @@ final class SingBoxStreamingDecoder {
         Objects.requireNonNull(source, "source 不能为空");
         Objects.requireNonNull(consumer, "consumer 不能为空");
         if (charset.equals(StandardCharsets.UTF_8)) {
-            try (JsonParser parser = JSON_FACTORY.createParser(input)) {
+            try (JsonParser parser = Json.parser(input)) {
                 return decodeDocument(parser, source, consumer);
             }
         }
         Reader reader = new InputStreamReader(input, charset);
-        try (JsonParser parser = JSON_FACTORY.createParser(reader)) {
+        try (JsonParser parser = Json.parser(reader)) {
             return decodeDocument(parser, source, consumer);
         }
     }
@@ -225,21 +224,40 @@ final class SingBoxStreamingDecoder {
         void accept(RuleRecord rule) throws IOException;
     }
 
-    record Result(long emitted, Optional<RuleParser.ParseIssue> issue) {
+    sealed interface Result permits Success, Failure {
 
-        Result {
-            Objects.requireNonNull(issue, "issue 不能为空");
-            if (emitted < 0 || emitted > 0 && issue.isPresent()) {
-                throw new IllegalArgumentException("sing-box decode result 状态无效");
-            }
+        default long emitted() {
+            return this instanceof Success success ? success.count() : 0;
+        }
+
+        default Optional<RuleParser.ParseIssue> issue() {
+            return this instanceof Failure failure
+                    ? Optional.of(failure.value())
+                    : Optional.empty();
         }
 
         static Result success(long emitted) {
-            return new Result(emitted, Optional.empty());
+            return new Success(emitted);
         }
 
         static Result invalid(String code, String message) {
-            return new Result(0, Optional.of(new RuleParser.ParseIssue(code, message)));
+            return new Failure(new RuleParser.ParseIssue(code, message));
+        }
+    }
+
+    record Success(long count) implements Result {
+
+        Success {
+            if (count < 0) {
+                throw new IllegalArgumentException("count 不能小于 0");
+            }
+        }
+    }
+
+    record Failure(RuleParser.ParseIssue value) implements Result {
+
+        Failure {
+            Objects.requireNonNull(value, "value 不能为空");
         }
     }
 }

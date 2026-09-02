@@ -4,7 +4,7 @@ import org.fordes.adfs.syntax.LineSlice;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
 
 public sealed interface RuleAst permits CommentAst, CosmeticRuleAst, EmptyAst, ExtensionAst,
-        HtmlFilterAst, MetadataAst, NetworkRuleAst, OpaqueAst, PreprocessorDirectiveAst,
+        HtmlFilterAst, MetadataAst, NetworkRuleAst, PreprocessorDirectiveAst,
         ScriptletRuleAst {
 
     LineSlice source();

@@ -13,8 +13,7 @@ import picocli.CommandLine.Spec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
-import java.util.logging.Level;
-import java.util.logging.LogRecord;
+import org.slf4j.LoggerFactory;
 
 @Command(
         name = "adfs",
@@ -26,13 +25,15 @@ import java.util.logging.LogRecord;
 public final class AdFSApplication implements Runnable {
 
     private static final String BANNER = """
-                _    ____  _____ ____
-               / \\  |  _ \\|  ___/ ___|
-              / _ \\ | | | | |_  \\___ \\
-             / ___ \\| |_| |  _|  ___) |
-            /_/   \\_\\____/|_|   |____/
 
-            AD Filter Subscriber
+            @|green,bold   █████╗  ██████╗  ███████╗ ███████╗|@
+            @|green,bold  ██╔══██╗ ██╔══██╗ ██╔════╝ ██╔════╝|@
+            @|green,bold  ███████║ ██║  ██║ █████╗   ███████╗|@
+            @|green,bold  ██╔══██║ ██║  ██║ ██╔══╝   ╚════██║|@
+            @|green,bold  ██║  ██║ ██████╔╝ ██║      ███████║|@
+            @|green,bold  ╚═╝  ╚═╝ ╚═════╝  ╚═╝      ╚══════╝|@
+            @|yellow,bold   ⚡|@ @|white,bold AD Filter Subscriber|@
+            @|faint   ─────────────────────────────────────────────────────────|@
 
             """;
 
@@ -41,7 +42,7 @@ public final class AdFSApplication implements Runnable {
 
     public static void main(String[] args) {
         CommandLine commandLine = commandLine();
-        commandLine.getOut().print(BANNER);
+        commandLine.getOut().print(commandLine.getColorScheme().ansi().string(BANNER));
         commandLine.getOut().flush();
         int exitCode = commandLine.execute(args);
         System.exit(exitCode);
@@ -61,8 +62,8 @@ public final class AdFSApplication implements Runnable {
     ) {
         try {
             LoggingConfigurator.ensureConfigured();
-            LoggingConfigurator.logger(AdFSApplication.class)
-                    .log(Level.SEVERE, "执行失败, 请检查日志");
+            LoggerFactory.getLogger(AdFSApplication.class)
+                    .error("执行失败, 请检查日志");
         } catch (IOException loggingError) {
             error.addSuppressed(loggingError);
         }

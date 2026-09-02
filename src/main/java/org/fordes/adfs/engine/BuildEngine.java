@@ -1,6 +1,8 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
+import org.fordes.adfs.logging.LoggingConfigurator;
+import org.fordes.adfs.logging.RuleLogContext;
 import org.fordes.adfs.model.CanonicalRule;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.preprocess.AdblockPreprocessor;
@@ -18,25 +20,29 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class BuildEngine {
 
     private static final int RULE_BATCH_SIZE = 1_024;
     private static final long MEBIBYTE = 1024L * 1024L;
+    private static final Logger LOGGER = LoggerFactory.getLogger(BuildEngine.class);
     private final RuleParser parser;
     private final RuleEncoder encoder;
     private final SingBoxStreamingDecoder singBoxDecoder;
@@ -48,32 +54,72 @@ public final class BuildEngine {
     }
 
     public BuildReport build(BuildPlan plan) throws IOException, InterruptedException {
+        return build(plan, NoOpBuildProgressListener.INSTANCE);
+    }
+
+    public BuildReport build(BuildPlan plan, BuildProgressListener progress)
+            throws IOException, InterruptedException {
         Objects.requireNonNull(plan, "plan 不能为空");
+        Objects.requireNonNull(progress, "progress 不能为空");
         long startedAt = System.nanoTime();
+        LoggingConfigurator.configure(plan.logging());
         try (BuildWorkspace workspace = BuildWorkspace.create()) {
             List<BuildPlan.SourceSpec> orderedSources = plan.sources().stream()
                     .sorted(Comparator.comparingInt(BuildPlan.SourceSpec::priority)
                             .reversed()
                             .thenComparing(BuildPlan.SourceSpec::id))
                     .toList();
-            List<SourceStage> sourceStages = parseSources(plan, orderedSources, workspace);
-            sourceStages = new DnsValidationPipeline(
-                    plan.processing().dnsValidation(),
-                    workspace
-            ).validate(sourceStages);
-            List<OutputPipeline.Staged> stagedOutputs = stageOutputs(plan, sourceStages, workspace);
-            try {
-                deployArtifacts(stagedOutputs);
-            } catch (IOException error) {
-                cleanupPaths(
-                        stagedOutputs.stream().map(OutputPipeline.Staged::temporaryPath).toList(),
-                        error
+            progress.stageStarted(BuildProgressListener.Stage.SOURCES, orderedSources.size());
+            List<SourceStage> sourceStages = parseSources(
+                    plan, orderedSources, workspace, progress);
+            long parsedRules = sourceStages.stream()
+                    .map(SourceStage::report)
+                    .mapToLong(BuildReport.Source::parsed)
+                    .sum();
+            progress.stageCompleted(
+                    BuildProgressListener.Stage.SOURCES,
+                    orderedSources.size(),
+                    orderedSources.size(),
+                    parsedRules
+            );
+
+            if (plan.processing().dnsValidation().enabled()) {
+                progress.stageStarted(BuildProgressListener.Stage.DNS_VALIDATION, 0);
+                AtomicLong validatedDomains = new AtomicLong();
+                sourceStages = new DnsValidationPipeline(
+                        plan.processing().dnsValidation(),
+                        workspace,
+                        processed -> {
+                            validatedDomains.set(processed);
+                            progress.stageAdvanced(
+                                    BuildProgressListener.Stage.DNS_VALIDATION,
+                                    null,
+                                    0,
+                                    0,
+                                    processed
+                            );
+                        }
+                ).validate(sourceStages);
+                progress.stageCompleted(
+                        BuildProgressListener.Stage.DNS_VALIDATION,
+                        0,
+                        0,
+                        validatedDomains.get()
                 );
-                throw error;
             }
+
+            progress.stageStarted(BuildProgressListener.Stage.OUTPUTS, plan.outputs().size());
+            List<BuildReport.Output> outputReports = writeOutputs(
+                    plan, sourceStages, workspace, progress);
+            progress.stageCompleted(
+                    BuildProgressListener.Stage.OUTPUTS,
+                    plan.outputs().size(),
+                    plan.outputs().size(),
+                    0
+            );
             return new BuildReport(
                     sourceStages.stream().map(SourceStage::report).toList(),
-                    stagedOutputs.stream().map(OutputPipeline.Staged::report).toList(),
+                    outputReports,
                     Duration.ofNanos(System.nanoTime() - startedAt)
             );
         }
@@ -82,13 +128,28 @@ public final class BuildEngine {
     private List<SourceStage> parseSources(
             BuildPlan plan,
             List<BuildPlan.SourceSpec> sources,
-            BuildWorkspace workspace
+            BuildWorkspace workspace,
+            BuildProgressListener progress
     ) throws IOException, InterruptedException {
         SourceOpener opener = new SourceOpener(plan.sourceLoading());
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+        AtomicLong completed = new AtomicLong();
+        AtomicLong parsed = new AtomicLong();
+        try (ExecutorService executor = Executors.newFixedThreadPool(maxConcurrentTasks(sources.size()))) {
             List<Future<SourceStage>> futures = new ArrayList<>(sources.size());
             for (BuildPlan.SourceSpec source : sources) {
-                futures.add(executor.submit(() -> parseSource(plan, opener, source, workspace)));
+                futures.add(executor.submit(() -> {
+                    SourceStage result = parseSource(plan, opener, source, workspace);
+                    long parsedRules = parsed.addAndGet(result.report().parsed());
+                    long completedSources = completed.incrementAndGet();
+                    progress.stageAdvanced(
+                            BuildProgressListener.Stage.SOURCES,
+                            source.id(),
+                            completedSources,
+                            sources.size(),
+                            parsedRules
+                    );
+                    return result;
+                }));
             }
             return await(futures, "规则源解析失败");
         }
@@ -126,7 +187,13 @@ public final class BuildEngine {
             }
             if (preprocessor != null) {
                 for (PreprocessorDiagnostic diagnostic : preprocessor.finish()) {
-                    accumulator.invalid();
+                    markInvalid(
+                            source,
+                            "<规则源结束>",
+                            diagnostic.code(),
+                            diagnostic.message(),
+                            accumulator
+                    );
                 }
             }
             return new SourceStage(source, segment, accumulator.finish());
@@ -147,7 +214,7 @@ public final class BuildEngine {
             Path segment
     ) throws IOException, InterruptedException {
         SingBoxStreamingDecoder.Result result;
-        SourceReport report;
+        BuildReport.Source report;
         try (RuleSegment.Writer writer = RuleSegment.writer(segment, source);
              SourceOpener.OpenedSource opened = opener.open(source)) {
             SourceAccumulator accumulator = new SourceAccumulator(source.id(), writer);
@@ -165,7 +232,9 @@ public final class BuildEngine {
             if (result.issue().isEmpty()) {
                 return new SourceStage(source, segment, accumulator.finish());
             }
-            report = new SourceReport(source.id(), 0, 1);
+            RuleParser.ParseIssue issue = result.issue().orElseThrow();
+            logInvalidRule(source, "<sing-box 规则集>", issue.code(), issue.message());
+            report = new BuildReport.Source(source.id(), 0, 1);
         } catch (IOException | InterruptedException | RuntimeException error) {
             try {
                 Files.deleteIfExists(segment);
@@ -189,36 +258,79 @@ public final class BuildEngine {
     ) throws IOException {
         long physicalLine = accumulator.nextRawLine();
         if (!withinLength(plan.processing(), line.length())) {
-            accumulator.invalid();
+            markInvalid(
+                    source,
+                    line.materialize(),
+                    "RULE_LENGTH_OUT_OF_RANGE",
+                    "规则长度不符合配置限制",
+                    accumulator
+            );
             return;
         }
         if (preprocessor == null) {
-            acceptOutcome(plan, parser.parseText(source, line.materialize()), accumulator);
+            String raw = line.materialize();
+            acceptOutcome(
+                    plan,
+                    source,
+                    line,
+                    parser.parseText(source, raw),
+                    accumulator
+            );
             return;
         }
         PreprocessResult result = preprocessor.process(line, physicalLine);
-        for (PreprocessorDiagnostic diagnostic : result.diagnostics()) {
-            accumulator.invalid();
+        if (!result.diagnostics().isEmpty()) {
+            String raw = line.materialize();
+            for (PreprocessorDiagnostic diagnostic : result.diagnostics()) {
+                markInvalid(
+                        source,
+                        raw,
+                        diagnostic.code(),
+                        diagnostic.message(),
+                        accumulator
+                );
+            }
         }
         for (PreprocessedLine logicalLine : result.logicalLines()) {
             if (!withinLength(plan.processing(), logicalLine.line().length())) {
-                accumulator.invalid();
+                markInvalid(
+                        source,
+                        logicalLine.line().materialize(),
+                        "RULE_LENGTH_OUT_OF_RANGE",
+                        "规则长度不符合配置限制",
+                        accumulator
+                );
                 continue;
             }
             RuleParser.ParseOutcome outcome = source.format() == RuleFormat.EASYLIST
                     ? parser.parseAdblock(source, logicalLine.line())
                     : parser.parseText(source, logicalLine.line().materialize());
-            acceptOutcome(plan, outcome, accumulator);
+            acceptOutcome(
+                    plan,
+                    source,
+                    logicalLine.line(),
+                    outcome,
+                    accumulator
+            );
         }
     }
 
     private static void acceptOutcome(
             BuildPlan plan,
+            BuildPlan.SourceSpec source,
+            LineSlice line,
             RuleParser.ParseOutcome outcome,
             SourceAccumulator accumulator
     ) throws IOException {
         if (outcome.issue().isPresent()) {
-            accumulator.invalid();
+            RuleParser.ParseIssue issue = outcome.issue().orElseThrow();
+            markInvalid(
+                    source,
+                    line.materialize(),
+                    issue.code(),
+                    issue.message(),
+                    accumulator
+            );
             return;
         }
         if (outcome.rules().isEmpty()) {
@@ -231,45 +343,86 @@ public final class BuildEngine {
         }
     }
 
-    private List<OutputPipeline.Staged> stageOutputs(
+    private static void markInvalid(
+            BuildPlan.SourceSpec source,
+            String rawRule,
+            String code,
+            String reason,
+            SourceAccumulator accumulator
+    ) {
+        logInvalidRule(source, rawRule, code, reason);
+        accumulator.invalid();
+    }
+
+    private static void logInvalidRule(
+            BuildPlan.SourceSpec source,
+            String rawRule,
+            String code,
+            String reason
+    ) {
+        LOGGER.warn(
+                "规则解析失败, {}: {} --> {}: {}",
+                RuleLogContext.source(source),
+                rawRule,
+                code,
+                reason
+        );
+    }
+
+    private List<BuildReport.Output> writeOutputs(
             BuildPlan plan,
             List<SourceStage> sourceStages,
-            BuildWorkspace workspace
+            BuildWorkspace workspace,
+            BuildProgressListener progress
     ) throws IOException, InterruptedException {
         AtomicReference<Throwable> workerFailure = new AtomicReference<>();
-        java.util.concurrent.ConcurrentLinkedQueue<Path> temporaryPaths =
-                new java.util.concurrent.ConcurrentLinkedQueue<>();
         long memoryBudget = dedupMemoryBudget(plan.outputs().size());
-        Map<String, BuildPlan.SourceSpec> sourcesById = plan.sources().stream()
-                .collect(Collectors.toUnmodifiableMap(BuildPlan.SourceSpec::id, source -> source));
         List<OutputPipeline> workers = new ArrayList<>(plan.outputs().size());
+        List<Path> stagedOutputs = new ArrayList<>(plan.outputs().size());
         for (int index = 0; index < plan.outputs().size(); index++) {
+            BuildPlan.OutputSpec output = plan.outputs().get(index);
+            Path stagedOutput = workspace.createSiblingFile(output.path(), ".output");
+            stagedOutputs.add(stagedOutput);
             workers.add(new OutputPipeline(
-                    plan,
-                    plan.outputs().get(index),
+                    plan.processing(),
+                    output,
+                    stagedOutput,
                     workspace,
                     encoder,
-                    temporaryPaths,
                     workerFailure,
-                    sourcesById,
                     memoryBudget
             ));
         }
 
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-        List<Future<OutputPipeline.Staged>> futures = new ArrayList<>(workers.size());
+        ExecutorService executor = Executors.newFixedThreadPool(maxConcurrentTasks(workers.size()));
+        List<Future<BuildReport.Output>> futures = new ArrayList<>(workers.size());
+        AtomicLong completed = new AtomicLong();
         try {
-            for (OutputPipeline worker : workers) {
-                futures.add(executor.submit(worker));
+            for (int index = 0; index < workers.size(); index++) {
+                OutputPipeline worker = workers.get(index);
+                BuildPlan.OutputSpec output = plan.outputs().get(index);
+                futures.add(executor.submit(() -> {
+                    BuildReport.Output result = worker.call();
+                    long completedOutputs = completed.incrementAndGet();
+                    progress.stageAdvanced(
+                            BuildProgressListener.Stage.OUTPUTS,
+                            output.path().getFileName().toString(),
+                            completedOutputs,
+                            workers.size(),
+                            0
+                    );
+                    return result;
+                }));
             }
             streamRules(sourceStages, workers, workerFailure);
             for (OutputPipeline worker : workers) {
                 worker.finishInput();
             }
-            return await(futures, "输出产物生成失败");
+            List<BuildReport.Output> reports = await(futures, "输出产物生成失败");
+            publishOutputs(plan.outputs(), stagedOutputs, workspace);
+            return reports;
         } catch (IOException | InterruptedException | RuntimeException error) {
             executor.shutdownNow();
-            cleanupPaths(temporaryPaths, error);
             throw error;
         } finally {
             executor.close();
@@ -285,9 +438,13 @@ public final class BuildEngine {
         for (SourceStage stage : sourceStages) {
             List<OutputPipeline.IndexedRule> batch = new ArrayList<>(RULE_BATCH_SIZE);
             try (RuleSegment.Reader reader = RuleSegment.reader(stage.segment())) {
-                RuleRecord record;
-                while ((record = reader.read()) != null) {
-                    batch.add(new OutputPipeline.IndexedRule(sequence++, record));
+                RuleRecord entry;
+                while ((entry = reader.read()) != null) {
+                    batch.add(new OutputPipeline.IndexedRule(
+                            sequence,
+                            entry
+                    ));
+                    sequence++;
                     if (batch.size() == RULE_BATCH_SIZE) {
                         dispatchBatch(stage.report().sourceId(), batch, workers, workerFailure);
                         batch = new ArrayList<>(RULE_BATCH_SIZE);
@@ -315,19 +472,67 @@ public final class BuildEngine {
         throwWorkerFailure(workerFailure);
     }
 
-    private void deployArtifacts(List<OutputPipeline.Staged> stagedOutputs) throws IOException {
-        List<DeploymentFile> files = new ArrayList<>(stagedOutputs.size());
-        for (OutputPipeline.Staged output : stagedOutputs) {
-            files.add(new DeploymentFile(output.temporaryPath(), output.report().path()));
-        }
+    private static void publishOutputs(
+            List<BuildPlan.OutputSpec> outputs,
+            List<Path> stagedOutputs,
+            BuildWorkspace workspace
+    ) throws IOException {
+        List<PublishedOutput> published = new ArrayList<>(outputs.size());
         try {
-            for (DeploymentFile file : files) {
-                Files.move(file.temporary(), file.target(), StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
+            for (int index = 0; index < outputs.size(); index++) {
+                Path target = outputs.get(index).path();
+                Path backup = null;
+                if (Files.exists(target)) {
+                    if (!Files.isRegularFile(target)) {
+                        throw new IOException("输出路径不是普通文件: " + target);
+                    }
+                    backup = workspace.createSiblingFile(target, ".backup");
+                    Files.delete(backup);
+                    moveAtomically(target, backup);
+                }
+                PublishedOutput current = new PublishedOutput(target, backup);
+                published.add(current);
+                moveAtomically(stagedOutputs.get(index), target);
+                current.completed = true;
             }
-        } catch (IOException error) {
-            cleanupPaths(files.stream().map(DeploymentFile::temporary).toList(), error);
-            throw new IOException("直接替换输出产物失败", error);
+        } catch (IOException failure) {
+            rollbackOutputs(published, failure);
+            throw failure;
+        }
+    }
+
+    private static void rollbackOutputs(List<PublishedOutput> published, IOException failure) {
+        for (PublishedOutput output : published.reversed()) {
+            try {
+                if (output.completed) {
+                    Files.deleteIfExists(output.target);
+                }
+                if (output.backup != null) {
+                    moveAtomically(output.backup, output.target);
+                }
+            } catch (IOException rollbackError) {
+                failure.addSuppressed(rollbackError);
+            }
+        }
+    }
+
+    private static void moveAtomically(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException error) {
+            throw new IOException("输出文件系统不支持原子替换: " + target, error);
+        }
+    }
+
+    private static final class PublishedOutput {
+
+        private final Path target;
+        private final Path backup;
+        private boolean completed;
+
+        private PublishedOutput(Path target, Path backup) {
+            this.target = target;
+            this.backup = backup;
         }
     }
 
@@ -337,13 +542,18 @@ public final class BuildEngine {
         return Math.clamp(maxHeap / divisor, MEBIBYTE, 128L * MEBIBYTE);
     }
 
+    private static int maxConcurrentTasks(int taskCount) {
+        int processors = Runtime.getRuntime().availableProcessors();
+        return Math.min(taskCount, Math.max(1, processors * 2));
+    }
+
     private static boolean withinLength(BuildPlan.ProcessingPolicy processing, int length) {
         return (processing.minRuleLength() == 0 || length >= processing.minRuleLength())
                 && (processing.maxRuleLength() == 0 || length <= processing.maxRuleLength());
     }
 
     private static boolean excluded(Set<String> excludes, RuleRecord record) {
-        return record.canonical()
+        return record.body().canonicalRule()
                 .filter(rule -> rule.matchType() == CanonicalRule.MatchType.EXACT_DOMAIN
                         || rule.matchType() == CanonicalRule.MatchType.DOMAIN_SUFFIX)
                 .map(CanonicalRule::value)
@@ -391,16 +601,6 @@ public final class BuildEngine {
         throw new IOException("输出工作线程失败", cause);
     }
 
-    private static void cleanupPaths(Iterable<Path> paths, Throwable primaryError) {
-        for (Path path : paths) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (IOException cleanupError) {
-                primaryError.addSuppressed(cleanupError);
-            }
-        }
-    }
-
     private static final class SourceAccumulator {
 
         private final String sourceId;
@@ -427,43 +627,8 @@ public final class BuildEngine {
             invalid++;
         }
 
-        private SourceReport finish() {
-            return new SourceReport(sourceId, parsed, invalid);
-        }
-    }
-
-    private record DeploymentFile(Path temporary, Path target) {
-    }
-
-    public record SourceReport(
-            String sourceId,
-            long parsed,
-            long invalid
-    ) {
-    }
-
-    public record OutputReport(
-            Path path,
-            long approximations,
-            long unsupported,
-            long finalRules
-    ) {
-    }
-
-    public record BuildReport(
-            List<SourceReport> sources,
-            List<OutputReport> outputs,
-            Duration elapsed
-    ) {
-
-        public BuildReport {
-            sources = List.copyOf(sources);
-            outputs = List.copyOf(outputs);
-            Objects.requireNonNull(elapsed, "elapsed 不能为空");
-        }
-
-        public long invalidRules() {
-            return sources.stream().mapToLong(SourceReport::invalid).sum();
+        private BuildReport.Source finish() {
+            return new BuildReport.Source(sourceId, parsed, invalid);
         }
     }
 }

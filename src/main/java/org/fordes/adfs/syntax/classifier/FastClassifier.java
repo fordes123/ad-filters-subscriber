@@ -31,7 +31,7 @@ public final class FastClassifier {
             token("$$", 2, SeparatorKind.ADGUARD_HTML)
     );
 
-    public RuleClassification classify(LineSlice line) {
+    public static RuleClassification classify(LineSlice line) {
         Objects.requireNonNull(line, "line 不能为空");
         int contentStart = firstNonWhitespace(line);
         if (contentStart == line.length()) {

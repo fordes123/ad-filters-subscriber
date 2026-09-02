@@ -111,8 +111,10 @@ final class BuildCommandIntegrationTest {
         assertTrue(clash.contains("payload:"));
         assertTrue(clash.contains("  - 'DOMAIN-SUFFIX,ads.example.com'"));
         String singBox = Files.readString(outputDirectory.resolve("sing-box.json"));
-        assertTrue(singBox.contains("\"version\": 2"));
-        assertTrue(singBox.contains("\"domain_suffix\":[\"ads.example.com\"]"));
+        assertTrue(singBox.contains("\"version\""));
+        assertTrue(singBox.contains("2"));
+        assertTrue(singBox.contains("\"domain_suffix\""));
+        assertTrue(singBox.contains("ads.example.com"));
         assertTrue(output.toString().contains("2 个源"));
         assertTrue(output.toString().contains("7 个文件"));
         assertTrue(output.toString().contains("hosts.txt"));

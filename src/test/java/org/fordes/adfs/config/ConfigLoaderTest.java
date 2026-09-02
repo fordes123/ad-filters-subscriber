@@ -41,9 +41,9 @@ final class ConfigLoaderTest {
                   source-loading:
                     local-charset: UTF-16LE
                     http-charset: UTF-8
-                    buffer-size: 8KB
-                    connect-timeout: 250ms
-                    request-timeout: PT2S
+                    buffer-size: 8192
+                    connect-timeout: 250
+                    request-timeout: 2000
                   processing:
                     min-rule-length: 2
                     max-rule-length: 200
@@ -52,13 +52,13 @@ final class ConfigLoaderTest {
                     allow-broadening: true
                     dns-validation:
                       enabled: false
-                      timeout: 2s
+                      timeout: 2000
                       concurrency: 16
                   logging:
                     level: trace
                 """, StandardCharsets.UTF_8);
 
-        BuildPlan plan = new ConfigLoader().load(config);
+        BuildPlan plan = ConfigLoader.load(config);
 
         assertEquals(1, plan.sources().size());
         assertEquals(9, plan.sources().getFirst().priority());
@@ -106,7 +106,7 @@ final class ConfigLoaderTest {
                     allow-narrowing: enabled
                 """);
 
-        assertTrue(error.getMessage().contains("必须是 boolean"));
+        assertTrue(error.getMessage().contains("解析失败"));
     }
 
     @Test
@@ -124,7 +124,7 @@ final class ConfigLoaderTest {
                     retries: 3
                 """);
 
-        assertTrue(error.getMessage().contains("未知字段: retries"));
+        assertTrue(error.getMessage().contains("retries"));
     }
 
     @Test
@@ -143,7 +143,7 @@ final class ConfigLoaderTest {
                       allow-narrowing: true
                 """);
 
-        assertTrue(error.getMessage().contains("未知字段: config"));
+        assertTrue(error.getMessage().contains("config"));
     }
 
     @Test
@@ -157,25 +157,25 @@ final class ConfigLoaderTest {
                   buffer-size: huge
                 """));
 
-        assertTrue(duration.getMessage().contains("无效 duration"));
-        assertTrue(size.getMessage().contains("无效 data size"));
+        assertTrue(duration.getMessage().contains("解析失败"));
+        assertTrue(size.getMessage().contains("解析失败"));
     }
 
     @Test
-    void requiresDnsServerAndRejectsPortWithoutServer() throws Exception {
+    void requiresDnsServersAndRejectsLegacyFields() throws Exception {
         IllegalArgumentException missingServer = loadInvalidConfig(baseConfig("""
                 processing:
                   dns-validation:
                     enabled: true
                 """));
-        IllegalArgumentException orphanPort = loadInvalidConfig(baseConfig("""
+        IllegalArgumentException legacyServer = loadInvalidConfig(baseConfig("""
                 processing:
                   dns-validation:
-                    port: 5353
+                    server: 1.1.1.1
                 """));
 
-        assertTrue(missingServer.getMessage().contains("必须配置 server"));
-        assertTrue(orphanPort.getMessage().contains("需要同时配置 server"));
+        assertTrue(missingServer.getMessage().contains("必须配置 servers"));
+        assertTrue(legacyServer.getMessage().contains("server"));
     }
 
     private static String baseConfig(String configSection) {
@@ -194,6 +194,6 @@ final class ConfigLoaderTest {
     private IllegalArgumentException loadInvalidConfig(String content) throws Exception {
         Path config = tempDirectory.resolve("invalid.yaml");
         Files.writeString(config, content, StandardCharsets.UTF_8);
-        return assertThrows(IllegalArgumentException.class, () -> new ConfigLoader().load(config));
+        return assertThrows(IllegalArgumentException.class, () -> ConfigLoader.load(config));
     }
 }

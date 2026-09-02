@@ -2,6 +2,7 @@ package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.model.CanonicalRule;
+import org.fordes.adfs.model.RuleBody;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.syntax.RuleFormat;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
@@ -50,7 +51,9 @@ final class SingBoxStreamingDecoderTest {
                         CanonicalRule.MatchType.IP_CIDR,
                         CanonicalRule.MatchType.IP_CIDR
                 ),
-                rules.stream().map(rule -> rule.canonical().orElseThrow().matchType()).toList());
+                rules.stream()
+                        .map(rule -> ((RuleBody.Canonical) rule.body()).value().matchType())
+                        .toList());
     }
 
     @Test

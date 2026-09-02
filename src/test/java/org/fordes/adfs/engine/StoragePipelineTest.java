@@ -3,6 +3,7 @@ package org.fordes.adfs.engine;
 import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.model.AdblockExtendedRule;
 import org.fordes.adfs.model.CanonicalRule;
+import org.fordes.adfs.model.RuleBody;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.syntax.RuleFormat;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
@@ -38,8 +39,7 @@ final class StoragePipelineTest {
                 source.dialect(),
                 source.clashDialect(),
                 "example.com##+js(json-prune, ad)",
-                Optional.empty(),
-                Optional.of(new AdblockExtendedRule(
+                new RuleBody.Extended(new AdblockExtendedRule(
                         AdblockExtendedRule.Syntax.UBO_SCRIPTLET,
                         AdblockExtendedRule.Action.APPLY,
                         Optional.empty(),
@@ -72,7 +72,7 @@ final class StoragePipelineTest {
                     DialectProfile.ABP,
                     ClashDialect.CLASSICAL,
                     "||example.com^",
-                    Optional.empty(),
+                    new RuleBody.Opaque(RuleRecord.SourceSyntax.NETWORK.name),
                     RuleRecord.SourceSyntax.NETWORK
             );
             IOException error = assertThrows(IOException.class, () -> writer.write(mismatched));
@@ -93,9 +93,8 @@ final class StoragePipelineTest {
                      new SpillableRuleDeduplicator(workspace, 1024L * 1024L)) {
             for (int index = 0; index < uniqueRules; index++) {
                 String content = "||%05d.%s.example.com^".formatted(index, padding);
-                deduplicator.add(index, content, record(content, "%05d.example.com".formatted(index)));
-                deduplicator.add(uniqueRules + index, content,
-                        record(content, "%05d.example.com".formatted(index)));
+                deduplicator.add(index, content, content);
+                deduplicator.add(uniqueRules + index, content, content);
             }
 
             SpillableRuleDeduplicator.Result result = deduplicator.finish();
@@ -112,45 +111,6 @@ final class StoragePipelineTest {
         }
     }
 
-    @Test
-    void externallySortsOneLargeDnsReferenceStream() throws Exception {
-        int references = 20_000;
-        try (BuildWorkspace workspace = BuildWorkspace.create()) {
-            DnsReferenceStore store = new DnsReferenceStore(workspace);
-            try (store) {
-                assertTrue(store.path().isEmpty());
-                for (int index = references - 1; index >= 0; index--) {
-                    store.write(new DnsReferenceStore.Reference(
-                            "domain%05d.test-domain.com".formatted(index),
-                            index % 3,
-                            index
-                    ));
-                }
-            }
-
-            Path sorted = DnsReferenceStore.sort(
-                    store.path().orElseThrow(),
-                    workspace,
-                    1024L * 1024L
-            );
-            int count = 0;
-            String previous = null;
-            try (DnsReferenceStore.Reader reader = DnsReferenceStore.reader(sorted)) {
-                DnsReferenceStore.Reference reference;
-                while ((reference = reader.read()) != null) {
-                    if (previous != null) {
-                        assertTrue(previous.compareTo(reference.domain()) < 0);
-                    }
-                    previous = reference.domain();
-                    count++;
-                }
-            }
-
-            assertEquals(references, count);
-            assertEquals("domain19999.test-domain.com", previous);
-        }
-    }
-
     private static RuleRecord record(String raw, String domain) {
         BuildPlan.SourceSpec source = source();
         return new RuleRecord(
@@ -159,14 +119,14 @@ final class StoragePipelineTest {
                 source.dialect(),
                 source.clashDialect(),
                 raw,
-                Optional.of(new CanonicalRule(
+                new RuleBody.Canonical(new CanonicalRule(
                         CanonicalRule.MatchType.DOMAIN_SUFFIX,
                         domain,
                         CanonicalRule.Action.BLOCK,
                         Optional.empty(),
                         0
                 )),
-                RuleRecord.SourceSyntax.NETWORK
+                RuleRecord.SourceSyntax.CANONICAL
         );
     }
 

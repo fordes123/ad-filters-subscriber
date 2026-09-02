@@ -19,11 +19,13 @@ import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.model.AdblockExtendedRule;
 import org.fordes.adfs.model.CanonicalRule;
 import org.fordes.adfs.model.RuleRecord;
+import org.fordes.adfs.model.RuleBody;
 import org.fordes.adfs.syntax.DecodeResult;
 import org.fordes.adfs.syntax.LineSlice;
-import org.fordes.adfs.syntax.RuleDecoder;
 import org.fordes.adfs.syntax.RuleFormat;
+import org.fordes.adfs.syntax.Span;
 import org.fordes.adfs.syntax.adblock.AdblockDecoder;
+import org.fordes.adfs.syntax.adblock.DialectProfile;
 
 import java.net.IDN;
 import java.net.InetAddress;
@@ -37,8 +39,6 @@ import java.util.Set;
 
 final class RuleParser {
 
-    private static final long FEATURE_IMPORTANT = 1L;
-    private static final long FEATURE_ALL = 1L << 1;
     private static final Set<String> NON_FILTERABLE_HOST_SUFFIXES = Set.of(
             "alt",
             "arpa",
@@ -54,7 +54,7 @@ final class RuleParser {
             "test"
     );
 
-    private final RuleDecoder<RuleAst> adblockDecoder;
+    private final AdblockDecoder adblockDecoder;
 
     RuleParser() {
         this.adblockDecoder = new AdblockDecoder();
@@ -84,13 +84,9 @@ final class RuleParser {
         }
         return ParseOutcome.parsed(new RuleRecord(
                 source.id(),
-                source.format(),
-                source.dialect(),
-                source.clashDialect(),
+                source.profile(),
                 ast.source().materialize(),
-                Optional.empty(),
-                Optional.of(lowerExtended(ast)),
-                sourceSyntax(ast)
+                new RuleBody.Extended(lowerExtended(ast))
         ));
     }
 
@@ -102,12 +98,12 @@ final class RuleParser {
             return ParseOutcome.ignored();
         }
         return switch (source.format()) {
-            case EASYLIST -> throw new IllegalArgumentException("EASYLIST 必须使用 parseAdblock");
             case DNS -> parseAdguardDns(source, raw, line);
             case HOSTS -> parseHosts(source, raw, line);
             case DNSMASQ -> parseDnsmasq(source, raw, line);
             case SMARTDNS -> parseSmartDns(source, raw, line);
             case CLASH -> parseClash(source, raw, line);
+            case EASYLIST -> throw new IllegalArgumentException("EASYLIST 必须使用 parseAdblock");
             case SING_BOX -> throw new IllegalArgumentException("SING_BOX 必须按 JSON 文档解析");
         };
     }
@@ -413,12 +409,9 @@ final class RuleParser {
             );
             default -> ParseOutcome.parsed(new RuleRecord(
                     source.id(),
-                    source.format(),
-                    source.dialect(),
-                    source.clashDialect(),
+                    source.profile(),
                     raw,
-                    Optional.empty(),
-                    RuleRecord.SourceSyntax.CLASH_CLASSICAL
+                    new RuleBody.Opaque(RuleRecord.SourceSyntax.CLASH_CLASSICAL.name)
             ));
         };
     }
@@ -463,90 +456,115 @@ final class RuleParser {
     private static RuleRecord lowerNetwork(BuildPlan.SourceSpec source, NetworkRuleAst ast) {
         String raw = ast.source().materialize();
         String pattern = ast.source().materialize(ast.pattern());
-        if (pattern.isEmpty()) {
-            return unknown(source, raw);
-        }
+
+        int filterEnd = ast.modifierBlock()
+                .map(Span::start)
+                .map(start -> start - 1)
+                .orElse(ast.source().length());
+        String prefix = ast.source().materialize(
+                new Span(0, ast.pattern().start()));
+        int suffixStart = ast.pattern().end() + (ast.rightAnchor() ? 1 : 0);
+        String suffix = ast.source().materialize(
+                new Span(suffixStart, filterEnd));
+        List<RuleBody.AdblockNetwork.Modifier> modifiers = ast.modifiers().stream()
+                .map(modifier -> new RuleBody.AdblockNetwork.Modifier(
+                        ast.source().materialize(modifier.source()),
+                        ast.source().materialize(modifier.name()),
+                        modifier.value().map(ast.source()::materialize),
+                        modifier.negated()
+                ))
+                .toList();
+
         long featureMask = 0;
+        boolean canonicalCompatible = true;
         for (NetworkModifierAst modifier : ast.modifiers()) {
             String name = ast.source().materialize(modifier.name()).toLowerCase(Locale.ROOT);
             if (modifier.negated() || modifier.value().isPresent()) {
-                return unknown(source, raw);
+                canonicalCompatible = false;
+                continue;
             }
             if (name.equals("important")) {
-                featureMask |= FEATURE_IMPORTANT;
+                featureMask |= CanonicalRule.FEATURE_IMPORTANT;
             } else if (name.equals("all")) {
-                featureMask |= FEATURE_ALL;
+                featureMask |= CanonicalRule.FEATURE_ALL;
             } else {
-                return unknown(source, raw);
+                canonicalCompatible = false;
             }
         }
 
         CanonicalRule.Action action = ast.action() == NetworkAction.ALLOW
                 ? CanonicalRule.Action.ALLOW
                 : CanonicalRule.Action.BLOCK;
-        CanonicalRule canonical;
-        if (ast.regex()) {
-            canonical = new CanonicalRule(
+        Optional<CanonicalRule> canonical = Optional.empty();
+        if (canonicalCompatible && ast.regex()) {
+            canonical = Optional.of(new CanonicalRule(
                     CanonicalRule.MatchType.REGEX,
                     pattern,
                     action,
                     Optional.empty(),
                     featureMask
-            );
-        } else {
+            ));
+        } else if (canonicalCompatible) {
             boolean qualified = pattern.endsWith("^");
             String target = qualified ? pattern.substring(0, pattern.length() - 1) : pattern;
             Optional<String> domain = normalizeDomain(target);
             if (ast.leftAnchor() == NetworkAnchor.DOMAIN && qualified && domain.isPresent()) {
-                canonical = new CanonicalRule(
+                canonical = Optional.of(new CanonicalRule(
                         CanonicalRule.MatchType.DOMAIN_SUFFIX,
                         domain.orElseThrow(),
                         action,
                         Optional.empty(),
                         featureMask
-                );
+                ));
             } else if (ast.leftAnchor() == NetworkAnchor.NONE
                     && !ast.rightAnchor()
                     && !qualified
                     && domain.isPresent()
                     && source.format() == RuleFormat.DNS) {
-                canonical = new CanonicalRule(
+                canonical = Optional.of(new CanonicalRule(
                         CanonicalRule.MatchType.EXACT_DOMAIN,
                         domain.orElseThrow(),
                         action,
                         Optional.empty(),
                         featureMask
-                );
+                ));
             } else if (ast.leftAnchor() == NetworkAnchor.NONE
                     && !ast.rightAnchor()
                     && !qualified
                     && domain.isPresent()
-                    && source.dialect() == org.fordes.adfs.syntax.adblock.DialectProfile.UBO) {
-                canonical = new CanonicalRule(
+                    && source.dialect() == DialectProfile.UBO) {
+                canonical = Optional.of(new CanonicalRule(
                         CanonicalRule.MatchType.DOMAIN_SUFFIX,
                         domain.orElseThrow(),
                         action,
                         Optional.empty(),
                         featureMask
-                );
+                ));
             } else {
-                canonical = new CanonicalRule(
+                canonical = Optional.of(new CanonicalRule(
                         CanonicalRule.MatchType.URL_PATTERN,
                         pattern,
                         action,
                         Optional.empty(),
                         featureMask
-                );
+                ));
             }
         }
         return new RuleRecord(
                 source.id(),
-                source.format(),
-                source.dialect(),
-                source.clashDialect(),
+                source.profile(),
                 raw,
-                Optional.of(canonical),
-                RuleRecord.SourceSyntax.NETWORK
+                new RuleBody.AdblockNetwork(
+                        ast.action(),
+                        ast.leftAnchor(),
+                        ast.rightAnchor(),
+                        ast.regex(),
+                        prefix,
+                        pattern,
+                        suffix,
+                        modifiers,
+                        canonical
+                )
         );
     }
 
@@ -565,28 +583,22 @@ final class RuleParser {
     ) {
         return new RuleRecord(
                 source.id(),
-                source.format(),
-                source.dialect(),
-                source.clashDialect(),
+                source.profile(),
                 raw,
-                Optional.of(rule),
-                RuleRecord.SourceSyntax.CANONICAL
+                new RuleBody.Canonical(rule)
         );
     }
 
     private static RuleRecord unknown(BuildPlan.SourceSpec source, String raw) {
         return new RuleRecord(
                 source.id(),
-                source.format(),
-                source.dialect(),
-                source.clashDialect(),
+                source.profile(),
                 raw,
-                Optional.empty(),
-                RuleRecord.SourceSyntax.NETWORK
+                new RuleBody.Opaque(RuleRecord.SourceSyntax.NETWORK.name)
         );
     }
 
-    private static Optional<String> normalizeDomain(String value) {
+    static Optional<String> normalizeDomain(String value) {
         return normalizeHostname(value, false);
     }
 
@@ -652,39 +664,6 @@ final class RuleParser {
                 || value >= '0' && value <= '9';
     }
 
-    private static RuleRecord.SourceSyntax sourceSyntax(RuleAst ast) {
-        return switch (ast) {
-            case CosmeticRuleAst cosmetic -> switch (cosmetic.syntax()) {
-                case ELEMENT_HIDING -> RuleRecord.SourceSyntax.COSMETIC;
-                case EXTENDED_SELECTOR, EXTENDED_CSS ->
-                        RuleRecord.SourceSyntax.ADGUARD_EXTENDED_COSMETIC;
-                case CSS_INJECTION -> RuleRecord.SourceSyntax.CSS_INJECTION;
-            };
-            case ScriptletRuleAst scriptlet -> switch (scriptlet.syntax()) {
-                case UBO_SCRIPTLET -> RuleRecord.SourceSyntax.UBO_SCRIPTLET;
-                case ADGUARD_SCRIPTLET -> RuleRecord.SourceSyntax.ADGUARD_SCRIPTLET;
-                case ABP_SNIPPET -> RuleRecord.SourceSyntax.ABP_SNIPPET;
-            };
-            case HtmlFilterAst html -> html.syntax() == HtmlFilterSyntax.UBO
-                    ? RuleRecord.SourceSyntax.UBO_HTML
-                    : RuleRecord.SourceSyntax.ADGUARD_HTML;
-            case ExtensionAst extension -> extension.kind() == ExtensionKind.ADGUARD_JAVASCRIPT
-                    ? RuleRecord.SourceSyntax.ADGUARD_JAVASCRIPT
-                    : RuleRecord.SourceSyntax.DIALECT_SPECIFIC_EXTENSION;
-            case org.fordes.adfs.ast.OpaqueAst ignored -> RuleRecord.SourceSyntax.OPAQUE;
-            case NetworkRuleAst ignored -> throw new IllegalArgumentException(
-                    "不支持转换为规则记录的 AST: " + ast.getClass().getSimpleName());
-            case EmptyAst ignored -> throw new IllegalArgumentException(
-                    "不支持转换为规则记录的 AST: " + ast.getClass().getSimpleName());
-            case CommentAst ignored -> throw new IllegalArgumentException(
-                    "不支持转换为规则记录的 AST: " + ast.getClass().getSimpleName());
-            case MetadataAst ignored -> throw new IllegalArgumentException(
-                    "不支持转换为规则记录的 AST: " + ast.getClass().getSimpleName());
-            case PreprocessorDirectiveAst ignored -> throw new IllegalArgumentException(
-                    "不支持转换为规则记录的 AST: " + ast.getClass().getSimpleName());
-        };
-    }
-
     private static AdblockExtendedRule lowerExtended(RuleAst ast) {
         return switch (ast) {
             case CosmeticRuleAst cosmetic -> extended(
@@ -740,14 +719,6 @@ final class RuleParser {
                     extension.body(),
                     Optional.empty()
             );
-            case org.fordes.adfs.ast.OpaqueAst opaque -> new AdblockExtendedRule(
-                    AdblockExtendedRule.Syntax.OPAQUE,
-                    AdblockExtendedRule.Action.APPLY,
-                    Optional.empty(),
-                    "",
-                    opaque.source().materialize(),
-                    Optional.empty()
-            );
             default -> throw new IllegalArgumentException(
                     "不支持转换为扩展规则的 AST: " + ast.getClass().getSimpleName());
         };
@@ -757,9 +728,9 @@ final class RuleParser {
             org.fordes.adfs.ast.ExtendedAction action,
             AdblockExtendedRule.Syntax syntax,
             LineSlice source,
-            Optional<org.fordes.adfs.syntax.Span> nonBasicModifiers,
-            org.fordes.adfs.syntax.Span domains,
-            org.fordes.adfs.syntax.Span body,
+            Optional<Span> nonBasicModifiers,
+            Span domains,
+            Span body,
             Optional<String> scriptletName
     ) {
         return new AdblockExtendedRule(
@@ -937,33 +908,55 @@ final class RuleParser {
         return value;
     }
 
-    public record ParseOutcome(List<RuleRecord> rules, Optional<ParseIssue> issue) {
+    public sealed interface ParseOutcome permits Parsed, Invalid, Ignored {
 
-        public ParseOutcome {
-            Objects.requireNonNull(rules, "rules 不能为空");
-            Objects.requireNonNull(issue, "issue 不能为空");
-            rules = List.copyOf(rules);
-            if (!rules.isEmpty() && issue.isPresent()) {
-                throw new IllegalArgumentException("rules 与 issue 不能同时存在");
-            }
+        default List<RuleRecord> rules() {
+            return this instanceof Parsed parsed ? parsed.values() : List.of();
+        }
+
+        default Optional<ParseIssue> issue() {
+            return this instanceof Invalid invalid
+                    ? Optional.of(invalid.value())
+                    : Optional.empty();
         }
 
         static ParseOutcome parsed(RuleRecord rule) {
-            return new ParseOutcome(List.of(rule), Optional.empty());
+            return new Parsed(List.of(rule));
         }
 
         static ParseOutcome parsed(List<RuleRecord> rules) {
-            return new ParseOutcome(rules, Optional.empty());
+            return new Parsed(rules);
         }
 
         static ParseOutcome invalid(String code, String message) {
-            return new ParseOutcome(List.of(), Optional.of(new ParseIssue(code, message)));
+            return new Invalid(new ParseIssue(code, message));
         }
 
         static ParseOutcome ignored() {
-            return new ParseOutcome(List.of(), Optional.empty());
+            return Ignored.INSTANCE;
         }
 
+    }
+
+    public record Parsed(List<RuleRecord> values) implements ParseOutcome {
+
+        public Parsed {
+            values = List.copyOf(values);
+            if (values.isEmpty()) {
+                throw new IllegalArgumentException("已解析规则不能为空");
+            }
+        }
+    }
+
+    public record Invalid(ParseIssue value) implements ParseOutcome {
+
+        public Invalid {
+            Objects.requireNonNull(value, "value 不能为空");
+        }
+    }
+
+    public enum Ignored implements ParseOutcome {
+        INSTANCE
     }
 
     public record ParseIssue(String code, String message) {

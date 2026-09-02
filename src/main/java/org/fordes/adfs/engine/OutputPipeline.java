@@ -1,81 +1,60 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
-import org.fordes.adfs.logging.LoggingConfigurator;
+import org.fordes.adfs.logging.RuleLogContext;
 import org.fordes.adfs.model.RuleRecord;
-import org.fordes.adfs.syntax.RuleFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.io.BufferedOutputStream;
-import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-final class OutputPipeline implements Callable<OutputPipeline.Staged> {
+/**
+ * 为一个目标文件完成规则转换、去重和写入。
+ */
+final class OutputPipeline implements Callable<BuildReport.Output> {
 
-    private static final Logger LOGGER = LoggingConfigurator.logger(OutputPipeline.class);
-
+    private static final Logger LOGGER = LoggerFactory.getLogger(OutputPipeline.class);
     private static final DateTimeFormatter HEADER_DATE =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int QUEUE_CAPACITY = 4;
-    private static final int WRITE_BUFFER_SIZE = 256 * 1024;
 
-    private final BuildPlan plan;
+    private final BuildPlan.ProcessingPolicy processing;
     private final BuildPlan.OutputSpec output;
+    private final Path stagedOutput;
     private final BuildWorkspace workspace;
     private final RuleEncoder encoder;
-    private final Queue<Path> temporaryPaths;
     private final AtomicReference<Throwable> failure;
-    private final Map<String, BuildPlan.SourceSpec> sourcesById;
     private final long memoryBudget;
     private final ArrayBlockingQueue<Batch> queue;
-    private final String outputName;
-    private final String outputDialect;
-    private final boolean debugLogging;
-    private final boolean traceLogging;
+    private final ArtifactWriter artifactWriter;
 
     OutputPipeline(
-            BuildPlan plan,
+            BuildPlan.ProcessingPolicy processing,
             BuildPlan.OutputSpec output,
+            Path stagedOutput,
             BuildWorkspace workspace,
             RuleEncoder encoder,
-            Queue<Path> temporaryPaths,
             AtomicReference<Throwable> failure,
-            Map<String, BuildPlan.SourceSpec> sourcesById,
             long memoryBudget
     ) {
-        this.plan = Objects.requireNonNull(plan, "plan 不能为空");
+        this.processing = Objects.requireNonNull(processing, "processing 不能为空");
         this.output = Objects.requireNonNull(output, "output 不能为空");
+        this.stagedOutput = Objects.requireNonNull(stagedOutput, "stagedOutput 不能为空");
         this.workspace = Objects.requireNonNull(workspace, "workspace 不能为空");
         this.encoder = Objects.requireNonNull(encoder, "encoder 不能为空");
-        this.temporaryPaths = Objects.requireNonNull(temporaryPaths, "temporaryPaths 不能为空");
         this.failure = Objects.requireNonNull(failure, "failure 不能为空");
-        this.sourcesById = Objects.requireNonNull(sourcesById, "sourcesById 不能为空");
         this.memoryBudget = memoryBudget;
         this.queue = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
-        this.outputName = output.path().getFileName().toString();
-        this.outputDialect = switch (output.format()) {
-            case EASYLIST, DNS -> "，" + output.dialect().name;
-            case CLASH -> "，" + output.clashDialect().name;
-            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
-        };
-        this.debugLogging = LOGGER.isLoggable(Level.FINE);
-        this.traceLogging = LOGGER.isLoggable(Level.FINEST);
+        this.artifactWriter = new ArtifactWriter(output);
     }
 
     boolean accepts(String sourceId) {
@@ -91,73 +70,85 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
     }
 
     @Override
-    public Staged call() throws Exception {
-        Path temporary = null;
+    public BuildReport.Output call() throws Exception {
         try (SpillableRuleDeduplicator deduplicator =
                      new SpillableRuleDeduplicator(workspace, memoryBudget)) {
-            Counters counters = consume(deduplicator);
+            OutputCounters counters = consume(deduplicator);
             SpillableRuleDeduplicator.Result result = deduplicator.finish();
-            temporary = createTemporaryOutput();
-            temporaryPaths.add(temporary);
-            writeArtifact(temporary, result);
-            return new Staged(
-                    temporary,
-                    new BuildEngine.OutputReport(
-                            output.path(),
-                            counters.approximations,
-                            counters.unsupported,
-                            result.unique()
-                    )
+            artifactWriter.write(stagedOutput, result, renderHeader(result.unique()));
+            return new BuildReport.Output(
+                    output.path(),
+                    counters.approximations(),
+                    counters.unsupported(),
+                    result.unique()
             );
         } catch (Throwable error) {
             failure.compareAndSet(null, error);
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                    temporaryPaths.remove(temporary);
-                } catch (IOException cleanupError) {
-                    error.addSuppressed(cleanupError);
-                }
-            }
             throw error;
         }
     }
 
-    private Counters consume(SpillableRuleDeduplicator deduplicator)
+    private OutputCounters consume(SpillableRuleDeduplicator deduplicator)
             throws IOException, InterruptedException {
-        Counters counters = new Counters();
+        long approximations = 0;
+        long unsupported = 0;
         while (true) {
             Batch batch = queue.take();
             if (batch.end()) {
-                return counters;
+                return new OutputCounters(approximations, unsupported);
             }
             for (IndexedRule indexed : batch.rules()) {
-                RuleRecord record = indexed.rule();
                 RuleEncoder.ConversionResult conversion = encoder.encode(
-                        record,
+                        indexed.rule(),
                         output,
-                        plan.processing().allowNarrowing(),
-                        plan.processing().allowBroadening()
+                        processing.allowNarrowing(),
+                        processing.allowBroadening()
                 );
                 switch (conversion.status()) {
-                    case EXACT -> {
-                    }
-                    case NARROWING, BROADENING -> counters.approximations++;
-                    case UNSUPPORTED -> counters.unsupported++;
-                }
-                if (conversion.content().isPresent()) {
-                    deduplicator.add(
-                            indexed.sequence(),
-                            conversion.content().orElseThrow(),
-                            record
+                    case EXACT -> addConverted(
+                            deduplicator,
+                            indexed,
+                            conversion.content().orElseThrow()
                     );
-                } else {
-                    if (debugLogging) {
-                        logFailure(record, conversion.reason());
+                    case NARROWING, BROADENING -> {
+                        approximations++;
+                        addConverted(
+                                deduplicator,
+                                indexed,
+                                conversion.content().orElseThrow()
+                        );
+                    }
+                    case UNSUPPORTED -> {
+                        unsupported++;
+                        if (LOGGER.isDebugEnabled()) {
+                            logFailure(indexed.rule(), conversion.reason());
+                        }
                     }
                 }
             }
         }
+    }
+
+    private void addConverted(
+            SpillableRuleDeduplicator deduplicator,
+            IndexedRule indexed,
+            String content
+    ) throws IOException {
+        deduplicator.add(indexed.sequence(), content, content);
+        logSuccess(indexed.rule(), content);
+    }
+
+    private void logSuccess(RuleRecord record, String content) {
+        if (!LOGGER.isTraceEnabled()) {
+            return;
+        }
+        LOGGER.trace(
+                "规则转换成功, {} --> {}: {} --> {}",
+                RuleLogContext.source(record),
+                RuleLogContext.output(output),
+                record.raw(),
+                content
+        );
     }
 
     private void enqueue(Batch batch) throws IOException, InterruptedException {
@@ -183,119 +174,13 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
         throw new IOException("输出工作线程失败: " + cause.getMessage(), cause);
     }
 
-    private Path createTemporaryOutput() throws IOException {
-        Path target = output.path();
-        Path parent = target.getParent();
-        Files.createDirectories(parent);
-        String prefix = target.getFileName().toString();
-        if (prefix.length() < 3) {
-            prefix = "adfs-" + prefix;
-        }
-        return Files.createTempFile(parent, prefix + ".", ".tmp");
-    }
-
-    private void writeArtifact(
-            Path temporary,
-            SpillableRuleDeduplicator.Result rules
-    ) throws IOException {
-        try (BufferedWriter writer = openWriter(temporary)) {
-            if (output.format() == RuleFormat.SING_BOX) {
-                writeSingBoxArtifact(writer, rules);
-                return;
-            }
-            writeHeader(writer, rules.unique());
-            rules.forEach(candidate -> {
-                writer.write(candidate.content());
-                writer.newLine();
-                logSuccess(candidate);
-            });
-        }
-    }
-
-    private void writeHeader(BufferedWriter writer, long total) throws IOException {
-        String header = renderHeader(total);
-        if (!header.isBlank()) {
-            String prefix = encoder.headerPrefix(output.format());
-            for (String headerLine : header.lines().toList()) {
-                if (!headerLine.isBlank()) {
-                    writer.write(prefix);
-                    writer.write(headerLine.strip());
-                    writer.newLine();
-                }
-            }
-        }
-        var fixedHeader = encoder.fixedHeader(output.format());
-        if (fixedHeader.isPresent()) {
-            writer.write(fixedHeader.orElseThrow());
-            writer.newLine();
-        }
-    }
-
-    private void writeSingBoxArtifact(
-            BufferedWriter writer,
-            SpillableRuleDeduplicator.Result rules
-    ) throws IOException {
-        writer.write("{\n  \"version\": 2,\n  \"rules\": [");
-        if (rules.unique() > 0) {
-            writer.newLine();
-            long[] index = {0};
-            rules.forEach(candidate -> {
-                writer.write(candidate.content());
-                if (++index[0] < rules.unique()) {
-                    writer.write(',');
-                }
-                writer.newLine();
-                logSuccess(candidate);
-            });
-            writer.write("  ");
-        }
-        writer.write("]\n}");
-        writer.newLine();
-    }
-
-    private void logSuccess(SpillableRuleDeduplicator.Candidate candidate) {
-        if (!traceLogging) {
-            return;
-        }
-        BuildPlan.SourceSpec source = sourcesById.get(candidate.sourceId());
-        LOGGER.log(
-                Level.FINEST,
-                "规则转换成功, {0}({1}{2}) --> {3}({4}{5}): {6} --> {7}",
-                new Object[]{
-                        source.id(),
-                        source.format().name,
-                        switch (source.format()) {
-                            case EASYLIST, DNS -> "，" + source.dialect().name;
-                            case CLASH -> "，" + source.clashDialect().name;
-                            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
-                        },
-                        outputName,
-                        output.format().name,
-                        outputDialect,
-                        candidate.raw(),
-                        candidate.content()
-                }
-        );
-    }
-
     private void logFailure(RuleRecord record, String reason) {
-        LOGGER.log(
-                Level.FINE,
-                "规则转换失败, {0}({1}{2}) --> {3}({4}{5}): {6} --> {7}",
-                new Object[]{
-                        record.sourceId(),
-                        record.sourceFormat().name,
-                        switch (record.sourceFormat()) {
-                            case EASYLIST, DNS -> "，" + record.sourceDialect().name;
-                            case CLASH -> "，" + record.sourceClashDialect().name;
-                            case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
-                        },
-                        outputName,
-                        output.format().name,
-                        outputDialect,
-                        record.raw(),
-                        reason
-                }
+        LOGGER.debug(
+                "规则转换失败, {} --> {}: {} --> {}",
+                RuleLogContext.source(record),
+                RuleLogContext.output(output),
+                record.raw(),
+                reason
         );
     }
 
@@ -303,35 +188,19 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
         return output.header()
                 .replace("${date}", LocalDateTime.now().format(HEADER_DATE))
                 .replace("${name}", output.path().getFileName().toString())
-                .replace(
-                        "${type}",
-                        output.format().name
-                )
+                .replace("${type}", output.format().name)
                 .replace("${desc}", output.description())
                 .replace("${total}", Long.toString(total));
     }
 
-    private static BufferedWriter openWriter(Path path) throws IOException {
-        return new BufferedWriter(
-                new OutputStreamWriter(
-                        new BufferedOutputStream(
-                                Files.newOutputStream(
-                                        path,
-                                        StandardOpenOption.TRUNCATE_EXISTING,
-                                        StandardOpenOption.WRITE
-                                ),
-                                WRITE_BUFFER_SIZE
-                        ),
-                        StandardCharsets.UTF_8
-                ),
-                WRITE_BUFFER_SIZE
-        );
-    }
-
     record IndexedRule(long sequence, RuleRecord rule) {
-    }
 
-    record Staged(Path temporaryPath, BuildEngine.OutputReport report) {
+        IndexedRule {
+            if (sequence < 0) {
+                throw new IllegalArgumentException("sequence 不能小于 0");
+            }
+            Objects.requireNonNull(rule, "rule 不能为空");
+        }
     }
 
     private record Batch(List<IndexedRule> rules, boolean end) {
@@ -341,8 +210,6 @@ final class OutputPipeline implements Callable<OutputPipeline.Staged> {
         }
     }
 
-    private static final class Counters {
-        private long approximations;
-        private long unsupported;
+    private record OutputCounters(long approximations, long unsupported) {
     }
 }

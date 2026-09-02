@@ -2,6 +2,7 @@ package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.model.CanonicalRule;
+import org.fordes.adfs.model.RuleBody;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.syntax.LineSlice;
 import org.fordes.adfs.syntax.RuleFormat;
@@ -101,7 +102,7 @@ final class RuleConversionTest {
             CanonicalRule.Action action,
             String value
     ) {
-        CanonicalRule rule = parse(source, text).canonical().orElseThrow();
+        CanonicalRule rule = parse(source, text).body().canonicalRule().orElseThrow();
 
         assertEquals(matchType, rule.matchType());
         assertEquals(action, rule.action());
@@ -177,6 +178,37 @@ final class RuleConversionTest {
     }
 
     @Test
+    void preservesNegatedMediaModifierWhenConvertingToAdguard() {
+        String raw = "/^https?:\\/\\/.*\\.(club|news)\\/.*/$~media,domain=example.com";
+        RuleRecord rule = parseAdblock(easylistSource("abp", DialectProfile.ABP), raw);
+
+        RuleEncoder.ConversionResult result = encoder.encode(
+                rule,
+                output(RuleFormat.EASYLIST, DialectProfile.ADGUARD, ClashDialect.CLASSICAL),
+                true,
+                true
+        );
+
+        assertEquals(raw, result.content().orElseThrow(), result::reason);
+    }
+
+    @Test
+    void preservesCommonCssStyleRuleWhenConvertingToAdguard() {
+        String raw = "cyberchef.org###workspace-wrapper > [id][style*=\"height\"] "
+                + "{height: 100% !important}";
+        RuleRecord rule = parseAdblock(easylistSource("abp", DialectProfile.ABP), raw);
+
+        RuleEncoder.ConversionResult result = encoder.encode(
+                rule,
+                output(RuleFormat.EASYLIST, DialectProfile.ADGUARD, ClashDialect.CLASSICAL),
+                true,
+                true
+        );
+
+        assertEquals(raw, result.content().orElseThrow(), result::reason);
+    }
+
+    @Test
     void convertsCompatibleUboScriptletAndHtmlRulesToAdguard() {
         BuildPlan.SourceSpec mixedAdguardSource = easylistSource(
                 "mixed",
@@ -202,7 +234,7 @@ final class RuleConversionTest {
 
         assertEquals("example.com##+js(json-prune, ad)",
                 scriptletResult.content().orElseThrow());
-        assertEquals("example.com$$script:has-text(ad)",
+        assertEquals("example.com##^script:has-text(ad)",
                 htmlResult.content().orElseThrow());
     }
 
@@ -210,7 +242,7 @@ final class RuleConversionTest {
     void reportsFriendlyTypedFailuresForUnsupportedExtendedRules() {
         RuleRecord unsupportedScriptlet = parseAdblock(
                 easylistSource("ubo", DialectProfile.UBO),
-                "example.com##+js(rpnt, script, ad, replacement)"
+                "example.com##+js(proxy-apply-config, {\"skipToString\":true})"
         );
         RuleRecord html = parseAdblock(
                 easylistSource("ubo", DialectProfile.UBO),
@@ -230,7 +262,7 @@ final class RuleConversionTest {
 
         assertEquals(RuleEncoder.ConversionFailure.SCRIPTLET_UNSUPPORTED,
                 scriptletResult.failure().orElseThrow());
-        assertEquals("AdGuard 尚未确认兼容 uBO scriptlet “rpnt”", scriptletResult.reason());
+        assertEquals("AdGuard 尚未确认兼容 uBO scriptlet “proxy-apply-config”", scriptletResult.reason());
         assertFalse(scriptletResult.reason().contains("SCRIPTLET_UNSUPPORTED"));
         assertEquals(RuleEncoder.ConversionFailure.TARGET_FORMAT_UNSUPPORTED,
                 hostsResult.failure().orElseThrow());
@@ -317,7 +349,7 @@ final class RuleConversionTest {
                 DialectProfile.ABP,
                 ClashDialect.CLASSICAL,
                 "fixture",
-                Optional.of(new CanonicalRule(
+                new RuleBody.Canonical(new CanonicalRule(
                         matchType,
                         matchType == CanonicalRule.MatchType.IP_CIDR ? "10.0.0.0/8" : "example.com",
                         action,
@@ -378,7 +410,7 @@ final class RuleConversionTest {
                 Arguments.of(CanonicalRule.MatchType.IP_CIDR, RuleFormat.CLASH,
                         ClashDialect.IPCIDR, "  - '10.0.0.0/8'"),
                 Arguments.of(CanonicalRule.MatchType.DOMAIN_KEYWORD, RuleFormat.SING_BOX,
-                        ClashDialect.CLASSICAL, "    {\"domain_keyword\":[\"example.com\"]}")
+                        ClashDialect.CLASSICAL, "{\"domain_keyword\":[\"example.com\"]}")
         );
     }
 

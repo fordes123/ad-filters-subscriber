@@ -1,7 +1,7 @@
 package org.fordes.adfs.source;
 
 import org.fordes.adfs.config.BuildPlan;
-import org.fordes.adfs.logging.LoggingConfigurator;
+import org.fordes.adfs.logging.RuleLogContext;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,13 +15,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import java.util.zip.GZIPInputStream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class SourceOpener {
 
-    private static final Logger LOGGER = LoggingConfigurator.logger(SourceOpener.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(SourceOpener.class);
 
     private static final int MAX_ATTEMPTS = 3;
 
@@ -115,25 +116,15 @@ public final class SourceOpener {
                 }
                 attemptError = error;
             }
-            if (LOGGER.isLoggable(Level.WARNING)) {
-                LOGGER.log(
-                        Level.WARNING,
-                        "规则源读取失败, {0}({1}{2}) --> 远程规则源: 第 {3}/{4} 次尝试，{5} 秒后重试 "
-                                + "--> {6}: {7}",
-                        new Object[]{
-                                source.id(),
-                                source.format().name,
-                                switch (source.format()) {
-                                    case EASYLIST, DNS -> "，" + source.dialect().name;
-                                    case CLASH -> "，" + source.clashDialect().name;
-                                    case HOSTS, DNSMASQ, SMARTDNS, SING_BOX -> "";
-                                },
-                                attempt,
-                                MAX_ATTEMPTS,
-                                attempt,
-                                attemptError.getClass().getSimpleName(),
-                                attemptError.getMessage()
-                        }
+            if (LOGGER.isWarnEnabled()) {
+                LOGGER.warn(
+                        "规则源读取失败, {} --> 远程规则源: 第 {}/{} 次尝试，{} 秒后重试 --> {}: {}",
+                        RuleLogContext.source(source),
+                        attempt,
+                        MAX_ATTEMPTS,
+                        attempt,
+                        attemptError.getClass().getSimpleName(),
+                        attemptError.getMessage()
                 );
             }
             Thread.sleep(Duration.ofSeconds(attempt));

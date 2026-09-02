@@ -84,9 +84,10 @@ application:
     local-charset: UTF-8
     http-charset: UTF-8
     # 本地与 HTTP 输入共用的读取缓冲区，不能小于 1KB。
-    buffer-size: 4KB
-    connect-timeout: 10s
-    request-timeout: 30s
+    buffer-size: 4096
+    # 连接和请求超时，单位为毫秒。
+    connect-timeout: 10000
+    request-timeout: 30000
 
   # 规则处理配置可整体省略。
   processing:
@@ -105,13 +106,14 @@ application:
 
     dns-validation:
       # 启用后，仅探测可确定域名的 BLOCK 规则。
-      # 仅有有效 NXDOMAIN 会删除规则；DNS 验证失败时保留全部原始规则并继续构建。
+      # 仅在域名没有 A/AAAA 记录时删除规则；DNS 查询失败时保留对应规则。
       enabled: false
-      # enabled=true 时必填；只能配置一个 DNS 服务器。
-      server: 1.1.1.1
-      port: 53
-      # UDP 查询与 TC 触发的 TCP 重试共用该超时时间。
-      timeout: 1s
+      # enabled=true 时必填；每项格式为 host:port，支持多个 DNS 服务器。
+      servers:
+        - 1.1.1.1:53
+        - 8.8.8.8:53
+      # SimpleResolver 的解析超时时间，单位为毫秒。
+      timeout: 1000
       # 同时在途的查询上限，取值范围 1..1024。
       concurrency: 128
 

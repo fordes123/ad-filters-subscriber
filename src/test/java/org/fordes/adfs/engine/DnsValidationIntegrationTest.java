@@ -4,6 +4,14 @@ import org.fordes.adfs.config.BuildPlan;
 import org.fordes.adfs.syntax.RuleFormat;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
 import org.fordes.adfs.syntax.clash.ClashDialect;
+import org.xbill.DNS.AAAARecord;
+import org.xbill.DNS.ARecord;
+import org.xbill.DNS.DClass;
+import org.xbill.DNS.Flags;
+import org.xbill.DNS.Message;
+import org.xbill.DNS.Record;
+import org.xbill.DNS.Section;
+import org.xbill.DNS.Type;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,7 +34,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,32 +46,43 @@ final class DnsValidationIntegrationTest {
     private Path tempDirectory;
 
     @Test
-    void distinguishesExistingAndNxDomainResponses() throws Exception {
-        try (TestDnsServer server = TestDnsServer.start()) {
-            BuildPlan.DnsValidationPolicy policy = dnsPolicy(server.port());
-            try (DnsValidator validator = new DnsValidator(policy)) {
-                assertTrue(validator.exists("exists.test-domain.com"));
-                assertFalse(validator.exists("missing.test-domain.com"));
-            }
+    void distinguishesExistingAndInvalidResponses() throws Exception {
+        try (TestDnsServer server = TestDnsServer.start();
+             DnsValidator validator = new DnsValidator(dnsPolicy(server.port()))) {
+            assertEquals(
+                    DnsValidator.Status.EXISTS,
+                    validator.resolve("exists.test-domain.com")
+            );
+            assertEquals(
+                    DnsValidator.Status.INVALID,
+                    validator.resolve("missing.test-domain.com")
+            );
+            assertEquals(
+                    DnsValidator.Status.INVALID,
+                    validator.resolve("nodata.test-domain.com")
+            );
         }
     }
 
     @Test
     void retriesTruncatedUdpResponseOverTcp() throws Exception {
-        try (TruncatingDnsServer server = TruncatingDnsServer.start()) {
-            try (DnsValidator validator = new DnsValidator(dnsPolicy(server.port()))) {
-                assertTrue(validator.exists("tcp.test-domain.com"));
-            }
+        try (TruncatingDnsServer server = TruncatingDnsServer.start();
+             DnsValidator validator = new DnsValidator(dnsPolicy(server.port()))) {
+            assertEquals(
+                    DnsValidator.Status.EXISTS,
+                    validator.resolve("tcp.test-domain.com")
+            );
         }
     }
 
     @Test
-    void removesOnlyNxDomainRulesDuringBuild() throws Exception {
+    void removesRulesWithoutAddressDuringBuild() throws Exception {
         Path sourcePath = tempDirectory.resolve("dns-source.txt");
-        Path outputPath = tempDirectory.resolve("validated.txt");
+        Path outputPath = tempDirectory.resolve("output").resolve("validated.txt");
         Files.writeString(
                 sourcePath,
-                "||exists.test-domain.com^\n||missing.test-domain.com^\n",
+                "||exists.test-domain.com^\n||missing.test-domain.com^\n"
+                        + "||nodata.test-domain.com^\n",
                 StandardCharsets.UTF_8
         );
 
@@ -93,20 +111,20 @@ final class DnsValidationIntegrationTest {
                     BuildPlan.LoggingPolicy.defaults()
             );
 
-            BuildEngine.BuildReport report = new BuildEngine().build(plan);
+            BuildReport report = new BuildEngine().build(plan);
             String output = Files.readString(outputPath, StandardCharsets.UTF_8);
 
             assertTrue(output.contains("exists.test-domain.com"));
             assertFalse(output.contains("missing.test-domain.com"));
             assertEquals(1, report.sources().getFirst().parsed());
-            assertEquals(1, report.sources().getFirst().invalid());
+            assertEquals(2, report.sources().getFirst().invalid());
         }
     }
 
     @Test
     void usesOneGlobalConcurrencyWindowForAllDomains() throws Exception {
         Path sourcePath = tempDirectory.resolve("concurrent-dns-source.txt");
-        Path outputPath = tempDirectory.resolve("concurrent-validated.txt");
+        Path outputPath = tempDirectory.resolve("output").resolve("concurrent-validated.txt");
         StringBuilder rules = new StringBuilder();
         for (int index = 0; index < 4; index++) {
             rules.append("||domain%02d.test-domain.com^%n".formatted(index));
@@ -138,7 +156,7 @@ final class DnsValidationIntegrationTest {
                     BuildPlan.LoggingPolicy.defaults()
             );
 
-            BuildEngine.BuildReport report = new BuildEngine().build(plan);
+            BuildReport report = new BuildEngine().build(plan);
 
             assertEquals(4, server.maxPending());
             assertEquals(4, report.sources().getFirst().parsed());
@@ -155,7 +173,7 @@ final class DnsValidationIntegrationTest {
                 true,
                 Duration.ofSeconds(2),
                 concurrency,
-                Optional.of(new BuildPlan.DnsServer("127.0.0.1", port))
+                List.of("127.0.0.1:" + port)
         );
     }
 
@@ -198,8 +216,10 @@ final class DnsValidationIntegrationTest {
                 try {
                     socket.receive(request);
                     byte[] query = Arrays.copyOf(request.getData(), request.getLength());
-                    boolean exists = !domain(query).startsWith("missing.");
-                    byte[] response = response(query, exists ? 0 : 3);
+                    String domain = domain(query);
+                    boolean missing = domain.startsWith("missing.");
+                    boolean hasAddress = !missing && !domain.startsWith("nodata.");
+                    byte[] response = response(query, missing ? 3 : 0, hasAddress);
                     socket.send(new DatagramPacket(response, response.length, request.getSocketAddress()));
                 } catch (SocketTimeoutException ignored) {
                     continue;
@@ -232,16 +252,39 @@ final class DnsValidationIntegrationTest {
         }
 
         private static byte[] response(byte[] query, int responseCode) {
-            byte[] response = Arrays.copyOf(query, query.length);
-            response[2] = (byte) 0x81;
-            response[3] = (byte) (0x80 | responseCode);
-            response[6] = 0;
-            response[7] = 0;
-            response[8] = 0;
-            response[9] = 0;
-            response[10] = 0;
-            response[11] = 0;
-            return response;
+            return response(query, responseCode, true);
+        }
+
+        private static byte[] response(byte[] query, int responseCode, boolean hasAddress) {
+            try {
+                Message request = new Message(query);
+                Message response = new Message();
+                response.getHeader().setID(request.getHeader().getID());
+                response.getHeader().setFlag(Flags.QR);
+                response.getHeader().setFlag(Flags.RA);
+                response.getHeader().setRcode(responseCode);
+                Record question = request.getQuestion();
+                response.addRecord(question, Section.QUESTION);
+                if (responseCode == 0 && hasAddress) {
+                    Record answer = question.getType() == Type.A
+                            ? new ARecord(
+                                    question.getName(),
+                                    DClass.IN,
+                                    60,
+                                    InetAddress.getLoopbackAddress()
+                            )
+                            : new AAAARecord(
+                                    question.getName(),
+                                    DClass.IN,
+                                    60,
+                                    InetAddress.getByName("::1")
+                            );
+                    response.addRecord(answer, Section.ANSWER);
+                }
+                return response.toWire();
+            } catch (IOException error) {
+                throw new IllegalStateException("测试 DNS 响应生成失败", error);
+            }
         }
 
         @Override

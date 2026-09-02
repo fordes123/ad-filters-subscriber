@@ -1,6 +1,5 @@
 package org.fordes.adfs.cli;
 
-import org.fordes.adfs.ast.OpaqueAst;
 import org.fordes.adfs.ast.RuleAst;
 import org.fordes.adfs.preprocess.AdblockPreprocessor;
 import org.fordes.adfs.preprocess.PreprocessResult;
@@ -8,7 +7,6 @@ import org.fordes.adfs.preprocess.PreprocessedLine;
 import org.fordes.adfs.preprocess.PreprocessorDiagnostic;
 import org.fordes.adfs.source.StreamingLineReader;
 import org.fordes.adfs.syntax.DecodeResult;
-import org.fordes.adfs.syntax.RuleDecoder;
 import org.fordes.adfs.syntax.adblock.AdblockDecoder;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
 import picocli.CommandLine.Command;
@@ -57,8 +55,8 @@ public final class CheckCommand implements Callable<Integer> {
             total = total.add(result);
         }
         spec.commandLine().getOut().printf(
-                "total raw=%d decoded=%d opaque=%d invalid=%d%n",
-                total.raw(), total.decoded(), total.opaque(), total.invalid());
+                "total raw=%d decoded=%d invalid=%d%n",
+                total.raw(), total.decoded(), total.invalid());
         return total.invalid() == 0 ? 0 : 2;
     }
 
@@ -92,10 +90,9 @@ public final class CheckCommand implements Callable<Integer> {
     private SourceStats parseSource(Path source) throws IOException {
         LongAdder raw = new LongAdder();
         LongAdder decoded = new LongAdder();
-        LongAdder opaque = new LongAdder();
         LongAdder invalid = new LongAdder();
         List<SourceDiagnostic> diagnostics = new ArrayList<>();
-        RuleDecoder<RuleAst> decoder = new AdblockDecoder();
+        AdblockDecoder decoder = new AdblockDecoder();
         AdblockPreprocessor preprocessor = new AdblockPreprocessor(dialect);
         StreamingLineReader reader = new StreamingLineReader();
 
@@ -126,12 +123,7 @@ public final class CheckCommand implements Callable<Integer> {
                                 failure.diagnostic().message()
                         ));
                     } else {
-                        RuleAst ast = ((DecodeResult.Decoded<RuleAst>) result).ast();
-                        if (ast instanceof OpaqueAst) {
-                            opaque.increment();
-                        } else {
-                            decoded.increment();
-                        }
+                        decoded.increment();
                     }
                 }
             });
@@ -149,7 +141,6 @@ public final class CheckCommand implements Callable<Integer> {
                 source,
                 raw.longValue(),
                 decoded.longValue(),
-                opaque.longValue(),
                 invalid.longValue(),
                 diagnostics
         );
@@ -157,8 +148,8 @@ public final class CheckCommand implements Callable<Integer> {
 
     private void print(SourceStats stats) {
         spec.commandLine().getOut().printf(
-                "%s raw=%d decoded=%d opaque=%d invalid=%d%n",
-                stats.source(), stats.raw(), stats.decoded(), stats.opaque(), stats.invalid());
+                "%s raw=%d decoded=%d invalid=%d%n",
+                stats.source(), stats.raw(), stats.decoded(), stats.invalid());
         for (SourceDiagnostic diagnostic : stats.diagnostics()) {
             spec.commandLine().getOut().printf(
                     "%s:%d [%s] %s%n",
@@ -173,7 +164,6 @@ public final class CheckCommand implements Callable<Integer> {
             Path source,
             long raw,
             long decoded,
-            long opaque,
             long invalid,
             List<SourceDiagnostic> diagnostics
     ) {
@@ -183,7 +173,7 @@ public final class CheckCommand implements Callable<Integer> {
         }
 
         private static SourceStats empty() {
-            return new SourceStats(null, 0, 0, 0, 0, List.of());
+            return new SourceStats(null, 0, 0, 0, List.of());
         }
 
         private SourceStats add(SourceStats other) {
@@ -191,7 +181,6 @@ public final class CheckCommand implements Callable<Integer> {
                     null,
                     raw + other.raw,
                     decoded + other.decoded,
-                    opaque + other.opaque,
                     invalid + other.invalid,
                     List.of()
             );

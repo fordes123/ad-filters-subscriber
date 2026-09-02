@@ -1,8 +1,11 @@
 package org.fordes.adfs.engine;
 
 import org.fordes.adfs.config.BuildPlan;
+import org.fordes.adfs.ast.NetworkAction;
+import org.fordes.adfs.ast.NetworkAnchor;
 import org.fordes.adfs.model.AdblockExtendedRule;
 import org.fordes.adfs.model.CanonicalRule;
+import org.fordes.adfs.model.RuleBody;
 import org.fordes.adfs.model.RuleRecord;
 import org.fordes.adfs.syntax.RuleFormat;
 import org.fordes.adfs.syntax.adblock.DialectProfile;
@@ -14,20 +17,25 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
 final class RuleSegment {
 
     private static final int MAGIC = 0x41444653;
-    private static final int VERSION = 2;
+    private static final int VERSION = 4;
     private static final int BUFFER_SIZE = 256 * 1024;
-    private static final int MAX_STRING_BYTES = 64 * 1024 * 1024;
     private static final int RECORD = 1;
     private static final int END = 0;
+    private static final int BODY_CANONICAL = 1;
+    private static final int BODY_ADBLOCK_NETWORK = 2;
+    private static final int BODY_EXTENDED = 3;
+    private static final int BODY_OPAQUE = 4;
+    private static final int MAX_MODIFIERS = 1_000_000;
 
     private RuleSegment() {
     }
@@ -65,30 +73,12 @@ final class RuleSegment {
                 throw new IOException("规则段已经关闭");
             }
             if (!record.sourceId().equals(source.id())
-                    || record.sourceFormat() != source.format()
-                    || record.sourceDialect() != source.dialect()
-                    || record.sourceClashDialect() != source.clashDialect()) {
+                    || !record.sourceProfile().equals(source.profile())) {
                 throw new IOException("规则与规则段来源元数据不一致: source=" + source.id());
             }
             output.writeByte(RECORD);
-            output.writeByte(record.sourceSyntax().ordinal());
             writeString(output, record.raw());
-            output.writeBoolean(record.canonical().isPresent());
-            if (record.canonical().isPresent()) {
-                CanonicalRule canonical = record.canonical().orElseThrow();
-                output.writeByte(canonical.matchType().ordinal());
-                output.writeByte(canonical.action().ordinal());
-                output.writeLong(canonical.featureMask());
-                writeString(output, canonical.value());
-                output.writeBoolean(canonical.destination().isPresent());
-                if (canonical.destination().isPresent()) {
-                    writeString(output, canonical.destination().orElseThrow());
-                }
-            }
-            output.writeBoolean(record.extended().isPresent());
-            if (record.extended().isPresent()) {
-                writeExtended(output, record.extended().orElseThrow());
-            }
+            writeBody(output, record.body());
         }
 
         @Override
@@ -146,24 +136,13 @@ final class RuleSegment {
                 throw new IOException("规则段包含未知记录标记: path=" + path + ", marker=" + marker);
             }
 
-            RuleRecord.SourceSyntax syntax = readEnum(
-                    input, RuleRecord.SourceSyntax.values(), "sourceSyntax", path);
             String raw = readString(input, path);
-            Optional<CanonicalRule> canonical = input.readBoolean()
-                    ? Optional.of(readCanonical(input, path))
-                    : Optional.empty();
-            Optional<AdblockExtendedRule> extended = input.readBoolean()
-                    ? Optional.of(readExtended(input, path))
-                    : Optional.empty();
+            RuleBody body = readBody(input, path);
             return new RuleRecord(
                     sourceId,
-                    format,
-                    dialect,
-                    clashDialect,
+                    org.fordes.adfs.syntax.RuleProfile.of(format, dialect, clashDialect),
                     raw,
-                    canonical,
-                    extended,
-                    syntax
+                    body
             );
         }
 
@@ -184,6 +163,104 @@ final class RuleSegment {
                 ? Optional.of(readString(input, path))
                 : Optional.empty();
         return new CanonicalRule(matchType, value, action, destination, featureMask);
+    }
+
+    private static void writeBody(DataOutputStream output, RuleBody body) throws IOException {
+        switch (body) {
+            case RuleBody.Canonical canonical -> {
+                output.writeByte(BODY_CANONICAL);
+                writeCanonical(output, canonical.value());
+            }
+            case RuleBody.AdblockNetwork network -> {
+                output.writeByte(BODY_ADBLOCK_NETWORK);
+                output.writeByte(network.action().ordinal());
+                output.writeByte(network.leftAnchor().ordinal());
+                output.writeBoolean(network.rightAnchor());
+                output.writeBoolean(network.regex());
+                writeString(output, network.prefix());
+                writeString(output, network.pattern());
+                writeString(output, network.suffix());
+                output.writeInt(network.modifiers().size());
+                for (RuleBody.AdblockNetwork.Modifier modifier : network.modifiers()) {
+                    writeString(output, modifier.source());
+                    writeString(output, modifier.name());
+                    output.writeBoolean(modifier.value().isPresent());
+                    if (modifier.value().isPresent()) {
+                        writeString(output, modifier.value().orElseThrow());
+                    }
+                    output.writeBoolean(modifier.negated());
+                }
+                output.writeBoolean(network.portable().isPresent());
+                if (network.portable().isPresent()) {
+                    writeCanonical(output, network.portable().orElseThrow());
+                }
+            }
+            case RuleBody.Extended extended -> {
+                output.writeByte(BODY_EXTENDED);
+                writeExtended(output, extended.value());
+            }
+            case RuleBody.Opaque opaque -> {
+                output.writeByte(BODY_OPAQUE);
+                writeString(output, opaque.kind());
+            }
+        }
+    }
+
+    private static RuleBody readBody(DataInputStream input, Path path) throws IOException {
+        int tag = input.readUnsignedByte();
+        return switch (tag) {
+            case BODY_CANONICAL -> new RuleBody.Canonical(readCanonical(input, path));
+            case BODY_ADBLOCK_NETWORK -> readAdblockNetwork(input, path);
+            case BODY_EXTENDED -> new RuleBody.Extended(readExtended(input, path));
+            case BODY_OPAQUE -> new RuleBody.Opaque(readString(input, path));
+            default -> throw new IOException("规则段包含未知规则体标记: path=" + path + ", tag=" + tag);
+        };
+    }
+
+    private static RuleBody.AdblockNetwork readAdblockNetwork(
+            DataInputStream input,
+            Path path
+    ) throws IOException {
+        NetworkAction action = readEnum(
+                input, NetworkAction.values(), "network.action", path);
+        NetworkAnchor leftAnchor = readEnum(
+                input, NetworkAnchor.values(), "network.leftAnchor", path);
+        boolean rightAnchor = input.readBoolean();
+        boolean regex = input.readBoolean();
+        String prefix = readString(input, path);
+        String pattern = readString(input, path);
+        String suffix = readString(input, path);
+        int modifierCount = input.readInt();
+        if (modifierCount < 0 || modifierCount > MAX_MODIFIERS) {
+            throw new IOException("规则段 modifier 数量无效: path=" + path + ", count=" + modifierCount);
+        }
+        List<RuleBody.AdblockNetwork.Modifier> modifiers = new ArrayList<>(modifierCount);
+        for (int index = 0; index < modifierCount; index++) {
+            String source = readString(input, path);
+            String name = readString(input, path);
+            Optional<String> value = input.readBoolean()
+                    ? Optional.of(readString(input, path))
+                    : Optional.empty();
+            boolean negated = input.readBoolean();
+            modifiers.add(new RuleBody.AdblockNetwork.Modifier(source, name, value, negated));
+        }
+        Optional<CanonicalRule> portable = input.readBoolean()
+                ? Optional.of(readCanonical(input, path))
+                : Optional.empty();
+        return new RuleBody.AdblockNetwork(
+                action, leftAnchor, rightAnchor, regex, prefix, pattern, suffix, modifiers, portable);
+    }
+
+    private static void writeCanonical(DataOutputStream output, CanonicalRule canonical)
+            throws IOException {
+        output.writeByte(canonical.matchType().ordinal());
+        output.writeByte(canonical.action().ordinal());
+        output.writeLong(canonical.featureMask());
+        writeString(output, canonical.value());
+        output.writeBoolean(canonical.destination().isPresent());
+        if (canonical.destination().isPresent()) {
+            writeString(output, canonical.destination().orElseThrow());
+        }
     }
 
     private static void writeExtended(
@@ -225,22 +302,11 @@ final class RuleSegment {
     }
 
     private static void writeString(DataOutputStream output, String value) throws IOException {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        output.writeInt(bytes.length);
-        output.write(bytes);
+        BinaryIO.writeString(output, value);
     }
 
     private static String readString(DataInputStream input, Path path) throws IOException {
-        int length = input.readInt();
-        if (length < 0 || length > MAX_STRING_BYTES) {
-            throw new IOException("规则段字符串长度无效: path=" + path + ", length=" + length);
-        }
-        byte[] bytes = input.readNBytes(length);
-        if (bytes.length != length) {
-            throw new IOException("规则段字符串被截断: path=" + path + ", expected=" + length
-                    + ", actual=" + bytes.length);
-        }
-        return new String(bytes, StandardCharsets.UTF_8);
+        return BinaryIO.readString(input, path, "规则段字符串");
     }
 
     private static <T extends Enum<T>> T readEnum(

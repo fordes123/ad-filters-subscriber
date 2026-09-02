@@ -47,7 +47,7 @@ final class ModelValidationTest {
                 DialectProfile.ABP,
                 ClashDialect.CLASSICAL,
                 "rule",
-                Optional.empty(),
+                new RuleBody.Opaque(RuleRecord.SourceSyntax.OPAQUE.name),
                 RuleRecord.SourceSyntax.OPAQUE
         ));
         assertThrows(IllegalArgumentException.class, () -> new RuleRecord(
@@ -56,7 +56,7 @@ final class ModelValidationTest {
                 DialectProfile.ABP,
                 ClashDialect.CLASSICAL,
                 " ",
-                Optional.empty(),
+                new RuleBody.Opaque(RuleRecord.SourceSyntax.OPAQUE.name),
                 RuleRecord.SourceSyntax.OPAQUE
         ));
     }

@@ -11,7 +11,7 @@ public final class StreamingLineReader {
 
     private static final int INITIAL_LINE_CAPACITY = 256;
 
-    public void read(InputStream input, int bufferSize, LineConsumer consumer) throws IOException {
+    public void read(InputStream input, int bufferSize, Consumer consumer) throws IOException {
         Objects.requireNonNull(input, "input 不能为空");
         Objects.requireNonNull(consumer, "consumer 不能为空");
         if (bufferSize <= 0) {
@@ -49,7 +49,7 @@ public final class StreamingLineReader {
         }
     }
 
-    private static void emit(byte[] lineBuffer, int lineLength, boolean firstLine, LineConsumer consumer)
+    private static void emit(byte[] lineBuffer, int lineLength, boolean firstLine, Consumer consumer)
             throws IOException {
         byte[] stableLine = Arrays.copyOf(lineBuffer, lineLength);
         int start = firstLine && hasUtf8Bom(stableLine) ? 3 : 0;
@@ -68,5 +68,11 @@ public final class StreamingLineReader {
                 && value[0] == (byte) 0xEF
                 && value[1] == (byte) 0xBB
                 && value[2] == (byte) 0xBF;
+    }
+
+    @FunctionalInterface
+    public interface Consumer {
+
+        void accept(LineSlice line) throws IOException;
     }
 }

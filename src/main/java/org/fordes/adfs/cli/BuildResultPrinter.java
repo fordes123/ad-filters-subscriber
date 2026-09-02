@@ -1,6 +1,6 @@
 package org.fordes.adfs.cli;
 
-import org.fordes.adfs.engine.BuildEngine;
+import org.fordes.adfs.engine.BuildReport;
 import picocli.CommandLine.Help.Ansi;
 import picocli.CommandLine.Help.ColorScheme;
 
@@ -20,14 +20,14 @@ final class BuildResultPrinter {
         this.ansi = colorScheme.ansi();
     }
 
-    void print(BuildEngine.BuildReport report) {
-        long rules = report.sources().stream().mapToLong(BuildEngine.SourceReport::parsed).sum();
+    void print(BuildReport report) {
+        long rules = report.sources().stream().mapToLong(BuildReport.Source::parsed).sum();
         long invalid = report.invalidRules();
         long approximations = report.outputs().stream()
-                .mapToLong(BuildEngine.OutputReport::approximations)
+                .mapToLong(BuildReport.Output::approximations)
                 .sum();
         long unsupported = report.outputs().stream()
-                .mapToLong(BuildEngine.OutputReport::unsupported)
+                .mapToLong(BuildReport.Output::unsupported)
                 .sum();
         long emptySources = report.sources().stream()
                 .filter(source -> source.parsed() == 0)
@@ -51,7 +51,7 @@ final class BuildResultPrinter {
         out.flush();
     }
 
-    private void printFiles(List<BuildEngine.OutputReport> outputs, boolean showFullPath) {
+    private void printFiles(List<BuildReport.Output> outputs, boolean showFullPath) {
         int nameWidth = outputs.stream()
                 .mapToInt(output -> displayWidth(label(output, showFullPath)))
                 .max()
@@ -68,7 +68,7 @@ final class BuildResultPrinter {
                 .mapToInt(output -> displayWidth(metric("无法转换", output.unsupported())))
                 .max()
                 .orElse(0);
-        for (BuildEngine.OutputReport output : outputs) {
+        for (BuildReport.Output output : outputs) {
             out.printf(
                     "  %s  %s  %s  %s%n",
                     padRight(label(output, showFullPath), nameWidth),
@@ -93,14 +93,14 @@ final class BuildResultPrinter {
         }
     }
 
-    private static Path commonDirectory(List<BuildEngine.OutputReport> outputs) {
+    private static Path commonDirectory(List<BuildReport.Output> outputs) {
         Path parent = outputs.getFirst().path().getParent();
         return outputs.stream().allMatch(output -> parent.equals(output.path().getParent()))
                 ? parent
                 : null;
     }
 
-    private static String label(BuildEngine.OutputReport output, boolean showFullPath) {
+    private static String label(BuildReport.Output output, boolean showFullPath) {
         return showFullPath
                 ? output.path().toString()
                 : output.path().getFileName().toString();

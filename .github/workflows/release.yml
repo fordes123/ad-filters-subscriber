@@ -33,19 +33,18 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Build and stage JAR
+      - name: Build release package
         run: |
-          mvn -B verify
-          jar="$(find target -maxdepth 1 -name 'adfs-*.jar' ! -name '*-shaded.jar' -print -quit)"
-          java -jar "$jar" --version
+          mvn -B "-Drevision=${{ steps.version.outputs.version }}" verify
+          java -jar target/adfs-${{ steps.version.outputs.version }}.jar --version
           mkdir -p release
-          cp "$jar" "release/adfs-${{ steps.version.outputs.version }}.jar"
+          cp target/adfs-${{ steps.version.outputs.version }}-jvm.zip release/
 
-      - name: Upload JAR
+      - name: Upload release package
         uses: actions/upload-artifact@v7
         with:
-          name: adfs-jar
-          path: release/adfs-${{ steps.version.outputs.version }}.jar
+          name: adfs-release
+          path: release/adfs-${{ steps.version.outputs.version }}-jvm.zip
 
   native:
     needs: verify
