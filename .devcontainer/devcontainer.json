@@ -1,12 +1,17 @@
 {
-  "name": "CodeSpace",
-  "dockerFile": "Dockerfile",
-  "extensions": [
-    "vscjava.vscode-java-pack",
-    "vscjava.vscode-java-debug",
-    "vscjava.vscode-java-test",
-    "vscjava.vscode-spring-boot-dashboard",
-    "vmware.vscode-spring-boot",
-    "vscjava.vscode-maven"
-  ]
+  "name": "AD Filter Subscriber",
+  "image": "mcr.microsoft.com/devcontainers/java:25-trixie",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "redhat.java",
+        "vscjava.vscode-java-debug",
+        "vscjava.vscode-java-test",
+        "vscjava.vscode-java-dependency",
+        "vscjava.vscode-gradle"
+      ]
+    }
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "./gradlew --no-daemon classes"
 }

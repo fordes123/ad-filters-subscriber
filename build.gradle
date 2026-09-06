@@ -1,0 +1,85 @@
+plugins {
+    id("io.micronaut.application") version "5.0.2"
+    id("com.gradleup.shadow") version "9.4.1"
+}
+
+version = "2.0"
+group = "dev.fordes.adfs"
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    annotationProcessor("org.projectlombok:lombok")
+    annotationProcessor("info.picocli:picocli-codegen")
+    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
+    annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
+    implementation("info.picocli:picocli")
+    implementation("io.micronaut.picocli:micronaut-picocli")
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
+    implementation("io.micronaut.validation:micronaut-validation")
+    implementation("jakarta.validation:jakarta.validation-api")
+    implementation("dnsjava:dnsjava:${dnsJavaVersion}")
+
+
+    compileOnly("org.projectlombok:lombok")
+    runtimeOnly("ch.qos.logback:logback-classic")
+    runtimeOnly("org.yaml:snakeyaml")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+
+application {
+    mainClass = "dev.fordes.adfs.AdfsCommand"
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    // Micronaut 与 Picocli 处理器不会声明消费全部参与元数据分析的注解。
+    options.compilerArgs.addAll(["-Xlint:all", "-Xlint:-processing", "-Werror"])
+}
+
+tasks.named("shadowJar") {
+    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+
+graalvmNative {
+    binaries {
+        all {
+            buildArgs.add("-H:+SharedArenaSupport")
+        }
+    }
+}
+
+
+micronaut {
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("dev.fordes.adfs.*")
+    }
+}
+
+tasks.named("dockerfile") {
+
+    baseImage = "eclipse-temurin:25-jre"
+}
+
+
+// https://docs.gradle.org/current/userguide/upgrading_major_version_9.html#test_task_fails_when_no_tests_are_discovered
+tasks.withType(AbstractTestTask).configureEach {
+    failOnNoDiscoveredTests = false
+}
+
