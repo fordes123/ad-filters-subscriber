@@ -33,7 +33,7 @@ final class RuleBuffer extends OutputStream {
 
     private void requireCapacity(int length) {
         if (length > limit - bytes.size()) {
-            throw new RuleProcessingException("单条 Sing-box 规则超过派生字节上限: max-bytes=" + limit);
+            throw new RuleProcessingException("单条 Sing-box 规则超过派生字节上限: " + limit);
         }
     }
 }

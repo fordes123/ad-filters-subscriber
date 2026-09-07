@@ -21,6 +21,8 @@ public final class DnsProperties {
 
     private boolean enabled;
 
+    private boolean strictMode;
+
     @NotNull
     private List<String> servers = List.of();
 

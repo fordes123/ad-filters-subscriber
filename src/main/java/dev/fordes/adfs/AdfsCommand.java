@@ -27,7 +27,7 @@ import dev.fordes.adfs.error.ConfigurationException;
 @Command(
         name = "adfs",
         description = "读取、转换并发布广告过滤规则",
-        version = "AdFS 2.0",
+        version = "2.0.0",
         mixinStandardHelpOptions = true)
 public final class AdfsCommand implements Callable<Integer> {
 
@@ -52,7 +52,7 @@ public final class AdfsCommand implements Callable<Integer> {
             printBanner(context);
             return context.getBean(AdfsRunner.class).run().value();
         } catch (BeanContextException | InitializationException exception) {
-            log.error("配置加载失败，处理已终止: {}", exception.getMessage(), exception);
+            log.error("配置加载失败, 处理已终止: {}", exception.getMessage(), exception);
             return ExitCode.CONFIGURATION.value();
         } catch (AdfsException exception) {
             log.error("处理已终止: {} --> {}", exception.stage(), exception.getMessage(), exception);
@@ -65,11 +65,13 @@ public final class AdfsCommand implements Callable<Integer> {
             if (input == null) {
                 throw new ConfigurationException("启动横幅资源不存在: banner.txt");
             }
-            String banner = new String(input.readAllBytes(), StandardCharsets.UTF_8).formatted(
-                    AdfsCommand.class.getAnnotation(Command.class).version()[0],
-                    System.getProperty("os.name"), System.getProperty("java.version"),
-                    VersionUtils.MICRONAUT_VERSION, String.join(", ", context.getEnvironment().getActiveNames()),
-                    ProcessHandle.current().pid());
+
+            var version = AdfsCommand.class.getAnnotation(Command.class).version()[0];
+            var os = System.getProperty("os.name");
+            var java = System.getProperty("java.version");
+            var pid = ProcessHandle.current().pid();
+
+            String banner = new String(input.readAllBytes(), StandardCharsets.UTF_8).formatted(version);
             System.err.println(CommandLine.Help.Ansi.AUTO.string(banner));
         } catch (IOException exception) {
             throw new ConfigurationException("读取启动横幅失败: banner.txt", exception);

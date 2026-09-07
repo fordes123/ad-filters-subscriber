@@ -3,7 +3,7 @@ plugins {
     id("com.gradleup.shadow") version "9.4.1"
 }
 
-version = "2.0"
+version = "2.0.0"
 group = "dev.fordes.adfs"
 
 

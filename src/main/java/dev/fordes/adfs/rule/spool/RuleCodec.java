@@ -48,12 +48,20 @@ import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.DnsResponse;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
+import dev.fordes.adfs.rule.model.WildcardSyntax;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 
 public final class RuleCodec {
 
-    private static final int VERSION = 3;
+    private static final int VERSION = 5;
+    private static final int SAFARI = 12;
+    private static final int DOMAIN_SUBDOMAIN = 13;
+    private static final int DNS_ADDRESS = 14;
     private static final int DOMAIN_EXACT = 1;
     private static final int DOMAIN_SUFFIX = 2;
     private static final int HOST_MAPPING = 3;
@@ -78,17 +86,40 @@ public final class RuleCodec {
         try (ByteArrayOutputStream bytes = new ByteArrayOutputStream(); DataOutputStream output = new DataOutputStream(bytes)) {
             output.writeByte(VERSION);
             switch (entry) {
+                case SafariRule safari -> {
+                    output.writeByte(SAFARI);
+                    writeString(output, safari.affinity());
+                    output.write(encode(safari.rule()));
+                }
                 case DomainRule(var pattern, RuleAction action) -> {
                     int tag = switch (pattern) {
                         case ExactDomain _ -> DOMAIN_EXACT;
                         case SuffixDomain _ -> DOMAIN_SUFFIX;
+                        case Subdomain _ -> DOMAIN_SUBDOMAIN;
                         case KeywordDomain _ -> DOMAIN_KEYWORD;
                         case WildcardDomain _ -> DOMAIN_WILDCARD;
                         case RegexDomain _ -> DOMAIN_REGEX;
                     };
                     output.writeByte(tag);
                     writeString(output, pattern.value());
+                    if (pattern instanceof WildcardDomain wildcard) {
+                        writeString(output, wildcard.syntax().name());
+                    }
                     writeString(output, action.value());
+                }
+                case DnsAddressRule rule -> {
+                    output.writeByte(DNS_ADDRESS);
+                    writeString(output, rule.format().value());
+                    writeExpression(output, new DomainMatch(rule.pattern()));
+                    writeString(output, rule.response().name());
+                    output.writeInt(rule.families().size());
+                    for (IpFamily family : rule.families().stream().sorted().toList()) {
+                        writeString(output, family.name());
+                    }
+                    output.writeInt(rule.addresses().size());
+                    for (IpAddress address : rule.addresses()) {
+                        writeAddress(output, address);
+                    }
                 }
                 case HostMappingRule(IpAddress address, DomainName hostname) -> {
                     output.writeByte(HOST_MAPPING);
@@ -132,15 +163,18 @@ public final class RuleCodec {
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(record))) {
             int version = input.readUnsignedByte();
             if (version != VERSION) {
-                throw new RuleProcessingException("RuleSpool 版本未知: version=" + version);
+                throw new RuleProcessingException("RuleSpool 版本未知: " + version);
             }
             int tag = input.readUnsignedByte();
             RuleEntry entry = switch (tag) {
+                case SAFARI -> readSafari(input);
                 case DOMAIN_EXACT -> new DomainRule(new ExactDomain(new DomainName(readString(input))), readAction(input));
+                case DOMAIN_SUBDOMAIN -> new DomainRule(new Subdomain(new DomainName(readString(input))), readAction(input));
                 case DOMAIN_SUFFIX -> new DomainRule(new SuffixDomain(new DomainName(readString(input))), readAction(input));
                 case DOMAIN_KEYWORD -> new DomainRule(new KeywordDomain(readString(input)), readAction(input));
-                case DOMAIN_WILDCARD -> new DomainRule(new WildcardDomain(readString(input)), readAction(input));
+                case DOMAIN_WILDCARD -> new DomainRule(new WildcardDomain(readString(input), WildcardSyntax.valueOf(readString(input))), readAction(input));
                 case DOMAIN_REGEX -> new DomainRule(new RegexDomain(readString(input)), readAction(input));
+                case DNS_ADDRESS -> readDnsAddress(input);
                 case HOST_MAPPING -> new HostMappingRule(readAddress(input), new DomainName(readString(input)));
                 case IP_CIDR -> new IpCidrRule(readAddress(input), input.readInt(), readAction(input));
                 case ROUTE -> new RouteRule(readExpression(input));
@@ -148,16 +182,48 @@ public final class RuleCodec {
                 case COSMETIC -> readCosmetic(input);
                 case OPAQUE -> new OpaqueRule(RuleType.parse(readString(input)), RuleDialect.parse(readString(input)),
                         readEnvelope(input), readString(input));
-                default -> throw new RuleProcessingException("RuleSpool 条目类型未知: tag=" + tag);
+                default -> throw new RuleProcessingException("RuleSpool 条目类型未知: " + tag);
             };
             if (input.read() >= 0) {
-                throw new RuleProcessingException("RuleSpool 条目包含未消费数据: tag=" + tag);
+                throw new RuleProcessingException("RuleSpool 条目包含未消费数据: " + tag);
             }
             return entry;
         } catch (EOFException exception) {
             throw new RuleProcessingException("RuleSpool 条目被截断", exception);
         } catch (IOException exception) {
             throw new RuleProcessingException("读取 RuleSpool 条目失败", exception);
+        }
+    }
+
+    private static DnsAddressRule readDnsAddress(DataInputStream input) throws IOException {
+        RuleType format = RuleType.parse(readString(input));
+        if (!(readExpression(input) instanceof DomainMatch(var pattern))) {
+            throw new RuleProcessingException("DNS 赋值域名模式非法");
+        }
+        DnsResponse response = DnsResponse.valueOf(readString(input));
+        int count = readCollectionSize(input, "DNS 地址族");
+        Set<IpFamily> families = EnumSet.noneOf(IpFamily.class);
+        for (int index = 0; index < count; index++) {
+            families.add(IpFamily.valueOf(readString(input)));
+        }
+        int size = readCollectionSize(input, "DNS 地址");
+        List<IpAddress> addresses = new ArrayList<>(size);
+        for (int index = 0; index < size; index++) {
+            addresses.add(readAddress(input));
+        }
+        return new DnsAddressRule(format, pattern, response, families, addresses);
+    }
+
+    private SafariRule readSafari(DataInputStream input) throws IOException {
+        try {
+            Set<String> blockers = Set.of(readString(input).split(",", -1));
+            byte[] nested = input.readAllBytes();
+            if (nested.length < 2 || nested[1] == SAFARI) {
+                throw new RuleProcessingException("Safari 分组条目为空或包含嵌套分组");
+            }
+            return new SafariRule(decode(nested), blockers);
+        } catch (IllegalArgumentException exception) {
+            throw new RuleProcessingException("Safari 分组条目非法: " + exception.getMessage(), exception);
         }
     }
 
@@ -203,6 +269,7 @@ public final class RuleCodec {
         output.writeBoolean(rule.exception());
         writeString(output, rule.operator().value());
         writeString(output, rule.body());
+        writeString(output, rule.dialect().value());
     }
 
     private static CosmeticRule readCosmetic(DataInputStream input) throws IOException {
@@ -223,7 +290,7 @@ public final class RuleCodec {
             case "$@$" -> CosmeticOperator.HTML_FILTER_EXCEPTION;
             case String value -> throw new RuleProcessingException("Cosmetic operator 未知: " + value);
         };
-        return new CosmeticRule(domains, exception, operator, readString(input));
+        return new CosmeticRule(domains, exception, operator, readString(input), RuleDialect.parse(readString(input)));
     }
 
     private static void writeResources(DataOutputStream output, Set<AdblockResourceType> resources) throws IOException {
@@ -262,8 +329,8 @@ public final class RuleCodec {
 
     private static int readCollectionSize(DataInputStream input, String field) throws IOException {
         int size = input.readInt();
-        if (size < 0 || size > 1_024) {
-            throw new RuleProcessingException(field + "数量非法: size=" + size);
+        if (size < 0 || size > input.available()) {
+            throw new RuleProcessingException(field + "数量非法: " + size);
         }
         return size;
     }
@@ -318,6 +385,9 @@ public final class RuleCodec {
                 output.writeByte(MATCH_DOMAIN);
                 writeString(output, patternType(pattern));
                 writeString(output, pattern.value());
+                if (pattern instanceof WildcardDomain wildcard) {
+                    writeString(output, wildcard.syntax().name());
+                }
             }
             case IpCidrMatch(MatchSide side, IpAddress network, int prefixLength) -> {
                 output.writeByte(MATCH_IP_CIDR);
@@ -360,7 +430,7 @@ public final class RuleCodec {
 
     private static MatchExpression readExpression(DataInputStream input) throws IOException {
         return switch (input.readUnsignedByte()) {
-            case MATCH_DOMAIN -> new DomainMatch(readPattern(readString(input), readString(input)));
+            case MATCH_DOMAIN -> new DomainMatch(readPattern(input));
             case MATCH_IP_CIDR -> new IpCidrMatch(readMatchSide(input), readAddress(input), input.readInt());
             case MATCH_PORT -> new PortMatch(readMatchSide(input), input.readInt(), input.readInt());
             case MATCH_NETWORK -> new NetworkMatch(switch (readString(input)) {
@@ -386,8 +456,8 @@ public final class RuleCodec {
 
     private static List<MatchExpression> readExpressions(DataInputStream input) throws IOException {
         int size = input.readInt();
-        if (size <= 0 || size > 1_024) {
-            throw new RuleProcessingException("RuleSpool 表达式数量非法: size=" + size);
+        if (size <= 0 || size > input.available()) {
+            throw new RuleProcessingException("RuleSpool 表达式数量非法: " + size);
         }
         List<MatchExpression> expressions = new ArrayList<>(size);
         for (int index = 0; index < size; index++) {
@@ -405,12 +475,15 @@ public final class RuleCodec {
         };
     }
 
-    private static DomainPattern readPattern(String type, String value) {
+    private static DomainPattern readPattern(DataInputStream input) throws IOException {
+        String type = readString(input);
+        String value = readString(input);
         return switch (type) {
             case "exact" -> new ExactDomain(new DomainName(value));
+            case "subdomain" -> new Subdomain(new DomainName(value));
             case "suffix" -> new SuffixDomain(new DomainName(value));
             case "keyword" -> new KeywordDomain(value);
-            case "wildcard" -> new WildcardDomain(value);
+            case "wildcard" -> new WildcardDomain(value, WildcardSyntax.valueOf(readString(input)));
             case "regex" -> new RegexDomain(value);
             default -> throw new RuleProcessingException("RuleSpool domain pattern 未知: " + type);
         };
@@ -420,6 +493,7 @@ public final class RuleCodec {
         return switch (pattern) {
             case ExactDomain _ -> "exact";
             case SuffixDomain _ -> "suffix";
+            case Subdomain _ -> "subdomain";
             case KeywordDomain _ -> "keyword";
             case WildcardDomain _ -> "wildcard";
             case RegexDomain _ -> "regex";
@@ -461,7 +535,7 @@ public final class RuleCodec {
     private static String readString(DataInputStream input) throws IOException {
         int length = input.readInt();
         if (length < 0 || length > input.available()) {
-            throw new RuleProcessingException("RuleSpool 字符串长度非法: length=" + length);
+            throw new RuleProcessingException("RuleSpool 字符串长度非法: " + length);
         }
         return new String(input.readNBytes(length), StandardCharsets.UTF_8);
     }

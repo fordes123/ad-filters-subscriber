@@ -3,7 +3,6 @@ package dev.fordes.adfs.application;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -27,7 +26,6 @@ import dev.fordes.adfs.config.InputSpec;
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
-import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.FormatRegistry;
 import dev.fordes.adfs.publish.OutputPublisher;
 import dev.fordes.adfs.publish.StagingWorkspace;
@@ -185,7 +183,7 @@ final class ProcessingPipelineTest {
     }
 
     @Test
-    void keepsPublishedOutputWhenParsingFails() throws IOException {
+    void skipsInvalidTextRulesAndPublishesEmptyOutput() throws IOException {
         Path input = temporaryDirectory.resolve("broken.txt");
         Path outputDir = Files.createDirectory(temporaryDirectory.resolve("existing-output"));
         Files.writeString(outputDir.resolve("hosts"), "previous\n");
@@ -193,16 +191,17 @@ final class ProcessingPipelineTest {
         EffectiveConfig config = TestConfigs.create(input, RuleType.HOSTS, RuleDialect.NONE, outputDir,
                 List.of(TestConfigs.textOutput("hosts", RuleType.HOSTS, RuleDialect.NONE)), false);
 
-        assertThrows(RuleProcessingException.class, () -> pipeline().process(config));
+        ProcessingResult result = pipeline().process(config);
 
-        assertEquals("previous\n", Files.readString(outputDir.resolve("hosts")));
+        assertEquals("", Files.readString(outputDir.resolve("hosts")));
+        assertEquals(1, result.sources().get("test-input").invalidRules());
         try (var paths = Files.list(temporaryDirectory)) {
             assertFalse(paths.anyMatch(path -> path.getFileName().toString().startsWith(".adfs-")));
         }
     }
 
     @Test
-    void removesRulesThatOrdinaryWhitelistExceptionsCannotOverride() throws IOException {
+    void preservesComplexAdblockRulesAndAddsWhitelistException() throws IOException {
         Path input = temporaryDirectory.resolve("important.txt");
         Files.writeString(input, "||white.example^$important\n||white.example^$redirect=noopjs\n"
                 + "white.example##.advert\n||blocked.example^\n");
@@ -215,11 +214,13 @@ final class ProcessingPipelineTest {
 
         pipeline().process(config);
 
-        assertEquals("||blocked.example^\n@@||white.example^\n", Files.readString(outputDir.resolve("adguard.txt")));
+        assertEquals("||white.example^$important\n||white.example^$redirect=noopjs\n"
+                + "white.example##.advert\n||blocked.example^\n@@||white.example^\n",
+                Files.readString(outputDir.resolve("adguard.txt")));
     }
 
     @Test
-    void removesMoreSpecificSmartDnsBlockingRulesWithinWhitelist() throws IOException {
+    void preservesNonEquivalentSmartDnsRulesAndAddsWhitelistRule() throws IOException {
         Path input = temporaryDirectory.resolve("smartdns.conf");
         Files.writeString(input, "address /child.white.example/#\naddress /-.white.example/0.0.0.0\n"
                 + "domain-rules /white.example/ -address #\naddress /blocked.example/#\n");
@@ -232,7 +233,9 @@ final class ProcessingPipelineTest {
 
         pipeline().process(config);
 
-        assertEquals("address /blocked.example/#\naddress /white.example/-\n",
+        assertEquals("address /child.white.example/#\naddress /-.white.example/0.0.0.0\n"
+                + "domain-rules /white.example/ -address #\naddress /blocked.example/#\n"
+                + "address /white.example/-\n",
                 Files.readString(outputDir.resolve("smartdns.conf")));
     }
 

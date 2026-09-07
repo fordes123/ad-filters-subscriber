@@ -31,18 +31,18 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
     private final Path path;
     private final int maxRecordSize;
     private final RuleCodec codec = new RuleCodec();
-    // 来源仅用于诊断，不进入规则编码和去重键；INFO 下保持原有暂存记录。
+    // 来源仅用于诊断, 不进入规则编码和去重键; INFO 下保持原有暂存记录。
     private final boolean logContext = log.isDebugEnabled();
     private final DataOutputStream output;
     private boolean writing = true;
 
     public RuleSpool(Path path, int maxRuleLength) {
         this.path = path;
-        this.maxRecordSize = Math.multiplyExact(maxRuleLength, 8);
+        this.maxRecordSize = Math.addExact(512, Math.multiplyExact(maxRuleLength, 64));
         try {
             output = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)));
         } catch (IOException exception) {
-            throw new OutputException("创建 RuleSpool 失败: path=" + path, exception);
+            throw new OutputException("创建 RuleSpool 失败: " + path, exception);
         }
     }
 
@@ -53,7 +53,7 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
         }
         byte[] record = codec.encode(entry);
         if (record.length > maxRecordSize) {
-            throw new RuleProcessingException("RuleSpool 条目超过派生上限: length=" + record.length);
+            throw new RuleProcessingException("RuleSpool 条目超过派生上限: " + record.length);
         }
         try {
             output.writeInt(record.length);
@@ -67,7 +67,7 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
                 }
             }
         } catch (IOException exception) {
-            throw new OutputException("写入 RuleSpool 失败: path=" + path, exception);
+            throw new OutputException("写入 RuleSpool 失败: " + path, exception);
         }
     }
 
@@ -79,7 +79,7 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
             output.close();
             writing = false;
         } catch (IOException exception) {
-            throw new OutputException("关闭 RuleSpool 写入端失败: path=" + path, exception);
+            throw new OutputException("关闭 RuleSpool 写入端失败: " + path, exception);
         }
     }
 
@@ -93,27 +93,27 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
                     return;
                 }
                 if (header.length != Integer.BYTES) {
-                    throw new RuleProcessingException("RuleSpool 记录头被截断: actual=" + header.length);
+                    throw new RuleProcessingException("RuleSpool 记录头被截断: " + header.length);
                 }
                 int length = ByteBuffer.wrap(header).getInt();
                 if (length <= 0 || length > maxRecordSize) {
-                    throw new RuleProcessingException("RuleSpool 记录长度非法: length=" + length);
+                    throw new RuleProcessingException("RuleSpool 记录长度非法: " + length);
                 }
                 byte[] record = input.readNBytes(length);
                 if (record.length != length) {
-                    throw new RuleProcessingException("RuleSpool 记录被截断: expected=" + length
-                            + ", actual=" + record.length);
+                    throw new RuleProcessingException("RuleSpool 记录被截断: " + length
+                            + " --> " + record.length);
                 }
                 if (logContext) {
                     for (String key : LOG_CONTEXT_KEYS) {
                         int contextLength = input.readInt();
                         if (contextLength < 0) {
-                            throw new RuleProcessingException("RuleSpool 来源文本长度非法: length=" + contextLength);
+                            throw new RuleProcessingException("RuleSpool 来源文本长度非法: " + contextLength);
                         }
                         byte[] context = input.readNBytes(contextLength);
                         if (context.length != contextLength) {
-                            throw new RuleProcessingException("RuleSpool 来源文本被截断: expected=" + contextLength
-                                    + ", actual=" + context.length);
+                            throw new RuleProcessingException("RuleSpool 来源文本被截断: " + contextLength
+                                    + " --> " + context.length);
                         }
                         MDC.put(key, new String(context, StandardCharsets.UTF_8));
                     }
@@ -121,7 +121,7 @@ public final class RuleSpool implements RuleConsumer, AutoCloseable {
                 consumer.accept(codec.decode(record));
             }
         } catch (IOException exception) {
-            throw new RuleProcessingException("回放 RuleSpool 失败: path=" + path, exception);
+            throw new RuleProcessingException("回放 RuleSpool 失败: " + path, exception);
         } finally {
             if (logContext) {
                 if (previousContext == null) {

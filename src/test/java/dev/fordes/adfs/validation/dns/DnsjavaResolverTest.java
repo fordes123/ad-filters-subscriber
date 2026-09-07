@@ -1,7 +1,6 @@
 package dev.fordes.adfs.validation.dns;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -33,7 +32,6 @@ import org.xbill.DNS.Type;
 
 import dev.fordes.adfs.config.EffectiveConfig.DnsCacheConfig;
 import dev.fordes.adfs.config.EffectiveConfig.DnsConfig;
-import dev.fordes.adfs.error.DnsException;
 import dev.fordes.adfs.rule.model.DomainName;
 
 final class DnsjavaResolverTest {
@@ -54,11 +52,18 @@ final class DnsjavaResolverTest {
     }
 
     @Test
-    void reportsResolverFailureAfterConfiguredRetry() throws IOException {
+    void returnsFailureAfterConfiguredRetry() throws IOException {
         try (DnsServer server = new DnsServer()) {
             DnsjavaResolver resolver = new DnsjavaResolver(server.config());
-            assertThrows(DnsException.class, () -> resolver.resolve(new DomainName("failure.example")));
-            assertEquals(1, resolver.retries());
+            assertEquals(DnsResult.FAILED, resolver.resolve(new DomainName("failure.example")));
+        }
+    }
+
+    @Test
+    void returnsFailureAfterAsyncTimeout() throws IOException {
+        try (DnsServer server = new DnsServer()) {
+            DnsjavaResolver resolver = new DnsjavaResolver(server.config(Duration.ofMillis(100)));
+            assertEquals(DnsResult.FAILED, resolver.resolve(new DomainName("timeout.example")));
         }
     }
 
@@ -78,8 +83,12 @@ final class DnsjavaResolverTest {
         }
 
         private DnsConfig config() {
-            return new DnsConfig(true, List.of("127.0.0.1:" + socket.getLocalPort()), 4,
-                    Duration.ofSeconds(1), 1, 4,
+            return config(Duration.ofSeconds(1));
+        }
+
+        private DnsConfig config(Duration timeout) {
+            return new DnsConfig(true, false, List.of("127.0.0.1:" + socket.getLocalPort()), 4,
+                    timeout, 1, 4,
                     new DnsCacheConfig(1_024, Duration.ofMinutes(1), Duration.ofSeconds(30)));
         }
 
@@ -121,6 +130,9 @@ final class DnsjavaResolverTest {
                             Name.fromString("v4.example.")), Section.ANSWER);
                     case "missing.example." -> response.getHeader().setRcode(Rcode.NXDOMAIN);
                     case "failure.example." -> response.getHeader().setRcode(Rcode.SERVFAIL);
+                    case "timeout.example." -> {
+                        continue;
+                    }
                     default -> throw new IOException("测试 DNS 收到未声明的查询: name=" + name);
                 }
                 byte[] bytes = response.toWire();

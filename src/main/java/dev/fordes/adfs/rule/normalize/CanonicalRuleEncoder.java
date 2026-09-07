@@ -31,28 +31,50 @@ import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 
 public final class CanonicalRuleEncoder {
 
-    private static final String VERSION = "1";
+    private static final String VERSION = "2";
 
     public byte[] encode(RuleEntry entry) {
         StringBuilder value = new StringBuilder();
         append(value, VERSION);
         switch (entry) {
+            case SafariRule safari -> {
+                append(value, "safari");
+                append(value, safari.affinity());
+                append(value, new String(encode(safari.rule()), StandardCharsets.UTF_8));
+            }
             case DomainRule(var pattern, RuleAction action) -> {
                 append(value, "domain");
                 append(value, switch (pattern) {
                     case ExactDomain _ -> "exact";
                     case SuffixDomain _ -> "suffix";
+                    case Subdomain _ -> "subdomain";
                     case KeywordDomain _ -> "keyword";
                     case WildcardDomain _ -> "wildcard";
                     case RegexDomain _ -> "regex";
                 });
                 append(value, pattern.value());
+                if (pattern instanceof WildcardDomain wildcard) {
+                    append(value, wildcard.syntax().name());
+                }
                 append(value, action.value());
+            }
+            case DnsAddressRule rule -> {
+                append(value, "dns-address");
+                append(value, rule.format().value());
+                appendExpression(value, new DomainMatch(rule.pattern()));
+                append(value, rule.response().name());
+                append(value, Integer.toString(rule.families().size()));
+                rule.families().stream().sorted().forEach(family -> append(value, family.value()));
+                append(value, Integer.toString(rule.addresses().size()));
+                rule.addresses().forEach(address -> appendAddress(value, address));
             }
             case HostMappingRule(IpAddress address, DomainName hostname) -> {
                 append(value, "host-mapping");
@@ -103,6 +125,7 @@ public final class CanonicalRuleEncoder {
 
     private static void appendCosmetic(StringBuilder value, CosmeticRule rule) {
         append(value, "cosmetic");
+        append(value, rule.dialect().value());
         appendDomains(value, rule.domains());
         append(value, Boolean.toString(rule.exception()));
         append(value, rule.operator().value());
@@ -135,11 +158,15 @@ public final class CanonicalRuleEncoder {
                 append(value, switch (pattern) {
                     case ExactDomain _ -> "exact";
                     case SuffixDomain _ -> "suffix";
+                    case Subdomain _ -> "subdomain";
                     case KeywordDomain _ -> "keyword";
                     case WildcardDomain _ -> "wildcard";
                     case RegexDomain _ -> "regex";
                 });
                 append(value, pattern.value());
+                if (pattern instanceof WildcardDomain wildcard) {
+                    append(value, wildcard.syntax().name());
+                }
             }
             case IpCidrMatch(MatchSide side, IpAddress network, int prefixLength) -> {
                 append(value, "ip-cidr-match");
@@ -173,10 +200,13 @@ public final class CanonicalRuleEncoder {
 
     private static void appendExpressions(StringBuilder value, String type, List<MatchExpression> expressions) {
         append(value, type);
-        append(value, Integer.toString(expressions.size()));
-        for (MatchExpression expression : expressions) {
-            appendExpression(value, expression);
-        }
+        List<String> members = expressions.stream().map(expression -> {
+            StringBuilder member = new StringBuilder();
+            appendExpression(member, expression);
+            return member.toString();
+        }).distinct().sorted().toList();
+        append(value, Integer.toString(members.size()));
+        members.forEach(value::append);
     }
 
     private static void append(StringBuilder target, String value) {

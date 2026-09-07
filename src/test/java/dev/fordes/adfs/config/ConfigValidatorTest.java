@@ -1,5 +1,6 @@
 package dev.fordes.adfs.config;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,7 +43,7 @@ final class ConfigValidatorTest {
     }
 
     @Test
-    void rejectsIncompatibleDialectAndDangerousOutputAncestor() throws Exception {
+    void rejectsIncompatibleDialect() throws Exception {
         Path input = temporaryDirectory.resolve("input.txt");
         Files.writeString(input, "example.com\n");
         RuleProperties rules = new RuleProperties();
@@ -52,11 +53,24 @@ final class ConfigValidatorTest {
                 temporaryDirectory.resolve("output"), input, "hosts", "abp",
                 "result.txt", "hosts", null, null, rules, preprocessor);
         assertThrows(ConfigurationException.class, incompatible::validate);
+    }
 
-        ConfigValidator dangerous = validator(
+    @Test
+    void allowsInputUnderOutputDirectoryAndRejectsOutputInputConflict() throws Exception {
+        Path input = temporaryDirectory.resolve("input.txt");
+        Files.writeString(input, "example.com\n");
+        RuleProperties rules = new RuleProperties();
+        PreprocessorProperties preprocessor = new PreprocessorProperties();
+
+        ConfigValidator separatePaths = validator(
                 temporaryDirectory, input, "hosts", null,
                 "result.txt", "hosts", null, null, rules, preprocessor);
-        assertThrows(ConfigurationException.class, dangerous::validate);
+        assertDoesNotThrow(separatePaths::validate);
+
+        ConfigValidator conflictingPaths = validator(
+                temporaryDirectory, input, "hosts", null,
+                "input.txt", "hosts", null, null, rules, preprocessor);
+        assertThrows(ConfigurationException.class, conflictingPaths::validate);
     }
 
     @Test

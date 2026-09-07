@@ -14,6 +14,9 @@ public final class RuleDeduplicator {
     }
 
     public boolean add(RuleEntry entry) {
+        if (dev.fordes.adfs.rule.normalize.RuleOrder.requiresOrder(entry)) {
+            return true;
+        }
         byte[] canonical = encoder.encode(entry);
         return table.add(Murmur3.hash(canonical), canonical, store);
     }

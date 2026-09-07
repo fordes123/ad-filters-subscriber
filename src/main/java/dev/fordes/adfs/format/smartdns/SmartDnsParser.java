@@ -9,18 +9,22 @@ import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.RuleConsumer;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleParser;
 import dev.fordes.adfs.format.TextSource;
 import dev.fordes.adfs.rule.model.DomainEnvelope;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.DnsResponse;
+import dev.fordes.adfs.rule.model.IpFamily;
+import java.util.Set;
 import dev.fordes.adfs.rule.model.DomainName;
 import dev.fordes.adfs.rule.model.DomainPattern;
-import dev.fordes.adfs.rule.model.DomainRule;
 import dev.fordes.adfs.rule.model.ExactDomain;
-import dev.fordes.adfs.rule.model.HostMappingRule;
 import dev.fordes.adfs.rule.model.IpAddress;
 import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
+import dev.fordes.adfs.rule.model.WildcardSyntax;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 import dev.fordes.adfs.source.SourceLine;
 import dev.fordes.adfs.source.SourceSession;
@@ -36,8 +40,9 @@ public final class SmartDnsParser implements RuleParser {
     }
 
     @Override
-    public void parse(SourceSession session, RuleConsumer consumer) {
-        TextSource.read(session, limits, line -> parseLine(line, consumer));
+    public ParseResult parse(SourceSession session, RuleConsumer consumer) {
+        TextSource.read(session, limits, text -> text.startsWith("#"), line -> parseLine(line, consumer));
+        return ParseResult.COMPLETE;
     }
 
     private void parseLine(SourceLine line, RuleConsumer consumer) {
@@ -47,6 +52,7 @@ public final class SmartDnsParser implements RuleParser {
         }
         String text = TextSource.ruleText(line, rules.minLength(), rules.maxLength());
         ParsedDirective directive = scanDirective(text, line);
+        validateSelector(directive.pattern(), line);
         switch (directive.command()) {
             case "address" -> parseAddress(directive, text, consumer, line);
             case "nameserver", "domain-rules" -> consumer.accept(opaque(text, directive.pattern()));
@@ -59,30 +65,25 @@ public final class SmartDnsParser implements RuleParser {
             String text,
             RuleConsumer consumer,
             SourceLine line) {
-        DomainPattern pattern = parsePattern(directive.pattern(), line);
         List<String> values = splitValues(directive.value(), line);
-        if (values.size() == 1) {
-            String value = values.getFirst();
-            if (value.equals("#")) {
-                consumer.accept(new DomainRule(pattern, RuleAction.BLOCK));
-                return;
-            }
-            if (value.equals("-")) {
-                consumer.accept(new DomainRule(pattern, RuleAction.ALLOW));
-                return;
-            }
-            if (value.equals("#4") || value.equals("#6") || value.equals("-4") || value.equals("-6")) {
-                consumer.accept(opaque(text, directive.pattern()));
-                return;
-            }
-        }
-        if (!(pattern instanceof ExactDomain exact)) {
+        String value = values.getFirst();
+        DnsResponse response = values.size() == 1 ? switch (value) {
+            case "#", "#4", "#6" -> DnsResponse.SOA;
+            case "-", "-4", "-6" -> DnsResponse.IGNORE;
+            default -> DnsResponse.ADDRESS;
+        } : DnsResponse.ADDRESS;
+        List<IpAddress> addresses = response == DnsResponse.ADDRESS
+                ? values.stream().map(IpAddress::parse).toList() : List.of();
+        Set<IpFamily> families = response == DnsResponse.ADDRESS
+                ? addresses.stream().map(IpAddress::family).collect(java.util.stream.Collectors.toUnmodifiableSet())
+                : value.endsWith("4") ? Set.of(IpFamily.IPV4) : value.endsWith("6") ? Set.of(IpFamily.IPV6)
+                : Set.of(IpFamily.IPV4, IpFamily.IPV6);
+        if (directive.pattern().equals(".") || directive.pattern().startsWith("domain-set:")) {
             consumer.accept(opaque(text, directive.pattern()));
             return;
         }
-        for (String value : values) {
-            consumer.accept(new HostMappingRule(IpAddress.parse(value), exact.domain()));
-        }
+        consumer.accept(new DnsAddressRule(RuleType.SMARTDNS, parsePattern(directive.pattern(), line),
+                response, families, addresses));
     }
 
     private static ParsedDirective scanDirective(String text, SourceLine line) {
@@ -121,6 +122,20 @@ public final class SmartDnsParser implements RuleParser {
         return new ParsedDirective(command, pattern.toString(), value);
     }
 
+    private static void validateSelector(String value, SourceLine line) {
+        if (value.equals(".")) {
+            return;
+        }
+        if (value.startsWith("domain-set:")) {
+            if (value.substring("domain-set:".length()).isBlank()
+                    || value.chars().anyMatch(Character::isWhitespace)) {
+                throw failure(line, "SmartDNS domain-set 名称非法");
+            }
+            return;
+        }
+        parsePattern(value, line);
+    }
+
     private static DomainPattern parsePattern(String value, SourceLine line) {
         if (value.equals(".") || value.startsWith("domain-set:")) {
             throw failure(line, "SmartDNS 全局规则或 domain-set 不能安全建模");
@@ -135,10 +150,11 @@ public final class SmartDnsParser implements RuleParser {
         }
         if (value.startsWith("*.")) {
             DomainName suffix = new DomainName(value.substring(2));
-            return new WildcardDomain("*." + suffix.value());
+            return new Subdomain(suffix);
         }
         if (value.startsWith("*-")) {
-            return new WildcardDomain(value);
+            new DomainName(value.substring(2));
+            return new WildcardDomain(value, WildcardSyntax.SMARTDNS);
         }
         return new SuffixDomain(new DomainName(value));
     }
@@ -204,7 +220,7 @@ public final class SmartDnsParser implements RuleParser {
     }
 
     private static RuleProcessingException failure(SourceLine line, String message) {
-        return new RuleProcessingException(message + ": source=" + line.source() + ", line=" + line.lineNumber());
+        return new RuleProcessingException(message);
     }
 
     private record ParsedDirective(String command, String pattern, String value) {

@@ -25,6 +25,7 @@ import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.format.RuleParser;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.rule.spool.RuleSpool;
 import dev.fordes.adfs.rule.model.AllOf;
 import dev.fordes.adfs.rule.model.AnyOf;
@@ -46,7 +47,11 @@ import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleEntry;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
 import dev.fordes.adfs.source.SourceSession;
+import dev.fordes.adfs.source.Utf8Reader;
+import dev.fordes.adfs.rule.model.IpAddress;
+import dev.fordes.adfs.rule.model.IpFamily;
 
 @Slf4j
 public final class SingBoxParser implements RuleParser {
@@ -55,6 +60,7 @@ public final class SingBoxParser implements RuleParser {
     private static final int MAX_NUMBER_LENGTH = 64;
     private final RuleConfig rules;
     private final JsonFactory factory;
+    private boolean opaqueSeen;
 
     public SingBoxParser(RuleConfig rules) {
         this.rules = rules;
@@ -68,13 +74,14 @@ public final class SingBoxParser implements RuleParser {
     }
 
     @Override
-    public void parse(SourceSession session, RuleConsumer consumer) {
-        try (JsonParser parser = factory.createParser(ObjectReadContext.empty(), session.root().input())) {
+    public ParseResult parse(SourceSession session, RuleConsumer consumer) {
+        opaqueSeen = false;
+        try (JsonParser parser = factory.createParser(ObjectReadContext.empty(), new Utf8Reader(session.root()))) {
             if (log.isDebugEnabled()) {
                 MDC.remove(RuleSpool.INPUT_RULE);
             }
             require(parser.nextToken(), JsonToken.START_OBJECT, parser, "顶层必须是对象");
-            boolean version = false;
+            int version = 0;
             boolean ruleArray = false;
             while (parser.nextToken() != JsonToken.END_OBJECT) {
                 require(parser.currentToken(), JsonToken.PROPERTY_NAME, parser, "顶层字段名非法");
@@ -86,19 +93,40 @@ public final class SingBoxParser implements RuleParser {
                     }
                     int formatVersion = parser.getIntValue();
                     if (formatVersion < 1 || formatVersion > 3) {
-                        throw syntax(parser, "不支持的 Sing-box version: value=" + formatVersion);
+                        throw syntax(parser, "不支持的 Sing-box version: " + formatVersion);
                     }
-                    version = true;
+                    version = formatVersion;
                 } else if (field.equals("rules")) {
                     require(value, JsonToken.START_ARRAY, parser, "rules 必须是数组");
                     ruleArray = true;
                     while (parser.nextToken() != JsonToken.END_ARRAY) {
-                        require(parser.currentToken(), JsonToken.START_OBJECT, parser, "rules 元素必须是对象");
-                        byte[] object = captureObject(parser);
+                        if (parser.currentToken() != JsonToken.START_OBJECT) {
+                            session.invalidRule();
+                            log.warn("Sing-box 规则语法非法, 已跳过:  {} --> Sing-box 解析 | {} --> {}",
+                                    MDC.get(RuleSpool.INPUT), parser.currentToken(), "rules 元素必须是对象");
+                            parser.skipChildren();
+                            continue;
+                        }
+                        byte[] object;
+                        try {
+                            object = captureObject(parser);
+                        } catch (RuleProcessingException | IllegalArgumentException exception) {
+                            session.invalidRule();
+                            log.warn("Sing-box 规则语法非法, 已跳过:  {} --> Sing-box 解析 | {} --> {}",
+                                    MDC.get(RuleSpool.INPUT), "<已读取的规则对象>", exception.getMessage());
+                            continue;
+                        }
                         if (log.isDebugEnabled()) {
                             MDC.put(RuleSpool.INPUT_RULE, new String(object, StandardCharsets.UTF_8));
                         }
-                        consumer.accept(parseRule(object, 0));
+                        try {
+                            consumer.accept(parseRule(object, 0));
+                        } catch (RuleProcessingException | IllegalArgumentException exception) {
+                            session.invalidRule();
+                            log.warn("Sing-box 规则语法非法, 已跳过:  {} --> Sing-box 解析 | {} --> {}",
+                                    MDC.get(RuleSpool.INPUT), new String(object, StandardCharsets.UTF_8),
+                                    exception.getMessage());
+                        }
                         if (log.isDebugEnabled()) {
                             MDC.remove(RuleSpool.INPUT_RULE);
                         }
@@ -107,41 +135,51 @@ public final class SingBoxParser implements RuleParser {
                     parser.skipChildren();
                 }
             }
-            if (!version || !ruleArray) {
+            if (version == 0 || !ruleArray) {
                 throw syntax(parser, "顶层缺少 version 或 rules");
+            }
+            if (opaqueSeen && version != 3) {
+                throw syntax(parser, "旧版 Sing-box 未建模字段不能安全升级至输出版本 3: " + version);
             }
             if (parser.nextToken() != null) {
                 throw syntax(parser, "顶层对象后存在额外 JSON 内容");
             }
+            return ParseResult.COMPLETE;
         } catch (IOException | JacksonException | IllegalArgumentException exception) {
-            log.debug("Sing-box JSON 解析失败:  {} | {} --> {}",
-                    MDC.get(RuleSpool.INPUT), MDC.get(RuleSpool.INPUT_RULE), exception.getMessage());
-            throw new RuleProcessingException("解析 Sing-box JSON 失败: source="
-                    + session.root().description() + ", reason=" + exception.getMessage(), exception);
+            session.invalidRule();
+            log.error("Sing-box 来源结构非法, 已丢弃该来源:  {} --> Sing-box 解析 | 来源结构 --> {}",
+                    MDC.get(RuleSpool.INPUT), exception.getMessage());
+            return ParseResult.INVALID_SOURCE;
         } catch (RuleProcessingException exception) {
-            log.debug("Sing-box 规则解析失败:  {} | {} --> {}",
-                    MDC.get(RuleSpool.INPUT), MDC.get(RuleSpool.INPUT_RULE), exception.getMessage());
-            throw exception;
+            session.invalidRule();
+            log.error("Sing-box 来源语义非法, 已丢弃该来源:  {} --> Sing-box 解析 | 来源语义 --> {}",
+                    MDC.get(RuleSpool.INPUT), exception.getMessage());
+            return ParseResult.INVALID_SOURCE;
         }
     }
 
     private byte[] captureObject(JsonParser parser) throws IOException {
-        try (RuleBuffer bytes = new RuleBuffer(Math.multiplyExact(rules.maxLength(), 4));
+        long start = parser.currentTokenLocation().getCharOffset();
+        byte[] object = copyObject(parser);
+        long length = parser.currentLocation().getCharOffset() - start;
+        if (length < rules.minLength() || length > rules.maxLength()) {
+            throw syntax(parser, "单条 Sing-box 规则长度越界: " + length);
+        }
+        return object;
+    }
+
+    private byte[] copyObject(JsonParser parser) throws IOException {
+        try (RuleBuffer bytes = new RuleBuffer(Math.addExact(64, Math.multiplyExact(rules.maxLength(), 6)));
                 JsonGenerator generator = factory.createGenerator(ObjectWriteContext.empty(), bytes)) {
             generator.copyCurrentStructure(parser);
             generator.flush();
-            byte[] object = bytes.toByteArray();
-            int length = new String(object, StandardCharsets.UTF_8).length();
-            if (length < rules.minLength() || length > rules.maxLength()) {
-                throw syntax(parser, "单条 Sing-box 规则长度越界: length=" + length);
-            }
-            return object;
+            return bytes.toByteArray();
         }
     }
 
     private RuleEntry parseRule(byte[] object, int depth) throws IOException {
         if (depth > MAX_NESTING_DEPTH) {
-            throw new RuleProcessingException("Sing-box 逻辑规则嵌套超过上限: max-depth=" + MAX_NESTING_DEPTH);
+            throw new RuleProcessingException("Sing-box 逻辑规则嵌套超过上限: " + MAX_NESTING_DEPTH);
         }
         List<MatchExpression> expressions = new ArrayList<>();
         List<MatchExpression> destinations = new ArrayList<>();
@@ -153,7 +191,7 @@ public final class SingBoxParser implements RuleParser {
         boolean unsupported = false;
         String type = "default";
         String mode = null;
-        try (JsonParser parser = factory.createParser(ObjectReadContext.empty(), object)) {
+        try (JsonParser parser = factory.createParser(ObjectReadContext.empty(), new String(object, StandardCharsets.UTF_8))) {
             require(parser.nextToken(), JsonToken.START_OBJECT, parser, "规则必须是对象");
             while (parser.nextToken() != JsonToken.END_OBJECT) {
                 String field = parser.currentName();
@@ -182,7 +220,7 @@ public final class SingBoxParser implements RuleParser {
                         while (parser.nextToken() != JsonToken.END_ARRAY) {
                             require(parser.currentToken(), JsonToken.START_OBJECT, parser,
                                     "logical rules 元素必须是对象");
-                            RuleEntry child = parseRule(captureObject(parser), depth + 1);
+                            RuleEntry child = parseRule(copyObject(parser), depth + 1);
                             nestedCount++;
                             if (child instanceof RouteRule route) {
                                 nested.add(route.expression());
@@ -208,7 +246,7 @@ public final class SingBoxParser implements RuleParser {
                 throw new RuleProcessingException("Sing-box logical 规则字段组合非法");
             }
             if (!mode.equals("and") && !mode.equals("or")) {
-                throw new RuleProcessingException("Sing-box logical mode 非法: value=" + mode);
+                throw new RuleProcessingException("Sing-box logical mode 非法: " + mode);
             }
         } else if (type.equals("default")) {
             if (mode != null || nested != null) {
@@ -218,9 +256,10 @@ public final class SingBoxParser implements RuleParser {
                 throw new RuleProcessingException("Sing-box 规则没有匹配字段");
             }
         } else {
-            throw new RuleProcessingException("Sing-box 规则 type 非法: value=" + type);
+            throw new RuleProcessingException("Sing-box 规则 type 非法: " + type);
         }
         if (unsupported) {
+            opaqueSeen = true;
             return new OpaqueRule(RuleType.SING_BOX, RuleDialect.NONE, DomainEnvelope.UNKNOWN,
                     new String(object, StandardCharsets.UTF_8));
         }
@@ -244,7 +283,8 @@ public final class SingBoxParser implements RuleParser {
         List<String> values = strings(parser);
         List<MatchExpression> matches = values.stream().map(value -> (MatchExpression) new DomainMatch(switch (kind) {
             case EXACT -> new ExactDomain(new DomainName(value));
-            case SUFFIX -> new SuffixDomain(new DomainName(value));
+            case SUFFIX -> value.startsWith(".") ? new Subdomain(new DomainName(value.substring(1)))
+                    : new SuffixDomain(new DomainName(value));
             case KEYWORD -> new KeywordDomain(value);
             case REGEX -> new RegexDomain(value);
         })).toList();
@@ -253,7 +293,9 @@ public final class SingBoxParser implements RuleParser {
 
     private static void addCidrs(JsonParser parser, List<MatchExpression> target, MatchSide side) throws IOException {
         List<MatchExpression> matches = strings(parser).stream().map(value -> {
-            IpCidr cidr = IpCidr.parse(value);
+            IpAddress address = value.indexOf('/') < 0 ? IpAddress.parse(value) : null;
+            IpCidr cidr = address == null ? IpCidr.parse(value)
+                    : new IpCidr(address, address.family() == IpFamily.IPV4 ? 32 : 128);
             return (MatchExpression) new IpCidrMatch(side, cidr.network(), cidr.prefixLength());
         }).toList();
         target.add(matches.size() == 1 ? matches.getFirst() : new AnyOf(matches));
@@ -268,11 +310,11 @@ public final class SingBoxParser implements RuleParser {
     private static void addPortRanges(JsonParser parser, List<MatchExpression> target, MatchSide side) throws IOException {
         List<MatchExpression> matches = strings(parser).stream().map(value -> {
             int separator = value.indexOf(':');
-            if (separator < 0) {
-                throw new RuleProcessingException("Sing-box 端口范围非法: value=" + value);
+            if (separator < 0 || value.indexOf(':', separator + 1) >= 0) {
+                throw new RuleProcessingException("Sing-box 端口范围非法: " + value);
             }
-            return (MatchExpression) new PortMatch(side, Integer.parseInt(value.substring(0, separator)),
-                    Integer.parseInt(value.substring(separator + 1)));
+            return (MatchExpression) new PortMatch(side, separator == 0 ? 0 : Integer.parseInt(value.substring(0, separator)),
+                    separator == value.length() - 1 ? 65_535 : Integer.parseInt(value.substring(separator + 1)));
         }).toList();
         target.add(matches.size() == 1 ? matches.getFirst() : new AnyOf(matches));
     }
@@ -282,7 +324,7 @@ public final class SingBoxParser implements RuleParser {
                 switch (value) {
                     case "tcp" -> NetworkMatch.Network.TCP;
                     case "udp" -> NetworkMatch.Network.UDP;
-                    default -> throw new RuleProcessingException("Sing-box network 非法: value=" + value);
+                    default -> throw new RuleProcessingException("Sing-box network 非法: " + value);
                 })).toList();
         target.add(matches.size() == 1 ? matches.getFirst() : new AnyOf(matches));
     }
@@ -339,7 +381,7 @@ public final class SingBoxParser implements RuleParser {
     }
 
     private static RuleProcessingException syntax(JsonParser parser, String message) {
-        return new RuleProcessingException(message + ": location=" + parser.currentLocation());
+        return new RuleProcessingException(message);
     }
 
     private enum DomainKind {

@@ -8,15 +8,14 @@ import java.util.regex.Pattern;
 
 import dev.fordes.adfs.error.ConfigurationException;
 
-/** 校验并单次替换文件头变量，不递归解释替换后的内容。 */
+/** 校验并单次替换文件头变量, 不递归解释替换后的内容。 */
 public final class FileHeaderTemplate {
 
     public static final String DEFAULT = """
-            Title: {{name}}
-            Format: {{type}}
-            Updated: {{date}}
-            Rules: {{total}}
-            Generator: AdFS
+            Title: adblock list of {{dialect}}
+            Total Size: {{total}}
+            Last Modified: {{date}}
+            Powered by https://github.com/fordes123/ad-filters-subscriber
             """;
     private static final Pattern VARIABLE = Pattern.compile("\\{\\{([^{}]*)}}");
     private static final Set<String> VARIABLES = Set.of("name", "type", "dialect", "date", "total");
@@ -33,7 +32,7 @@ public final class FileHeaderTemplate {
         }
         String remaining = matcher.replaceAll("");
         if (remaining.contains("{{") || remaining.contains("}}")) {
-            throw new ConfigurationException(field + " 包含不完整的文件头变量，格式必须为 {{变量名}}");
+            throw new ConfigurationException(field + " 包含不完整的文件头变量, 格式必须为 {{变量名}}");
         }
     }
 
@@ -42,7 +41,7 @@ public final class FileHeaderTemplate {
                 switch (match.group(1)) {
                     case "name" -> output.path().toString().replace('\\', '/');
                     case "type" -> output.type().value();
-                    case "dialect" -> output.dialect() == RuleDialect.NONE ? "" : output.dialect().value();
+                    case "dialect" -> output.dialect() == RuleDialect.NONE ? output.type().value() : output.dialect().value();
                     case "date" -> generatedAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
                     case "total" -> Long.toString(total);
                     default -> throw new ConfigurationException("未知文件头变量: " + match.group());

@@ -6,9 +6,11 @@ import dev.fordes.adfs.error.RuleProcessingException;
 
 final class BooleanExpression {
 
+    private static final int MAX_EXPRESSION_DEPTH = 128;
     private final String source;
     private final Set<String> trueTokens;
     private int index;
+    private int depth;
 
     private BooleanExpression(String source, Set<String> trueTokens) {
         this.source = source;
@@ -44,6 +46,17 @@ final class BooleanExpression {
     }
 
     private boolean parseUnary() {
+        if (++depth > MAX_EXPRESSION_DEPTH) {
+            throw failure("条件表达式嵌套超过上限: " + MAX_EXPRESSION_DEPTH);
+        }
+        try {
+            return parseOperand();
+        } finally {
+            depth--;
+        }
+    }
+
+    private boolean parseOperand() {
         skipWhitespace();
         if (consume("!")) {
             return !parseUnary();
@@ -56,7 +69,7 @@ final class BooleanExpression {
             return value;
         }
         String token = parseToken();
-        return trueTokens.contains(token);
+        return token.equals("true") || !token.equals("false") && trueTokens.contains(token);
     }
 
     private String parseToken() {
@@ -92,6 +105,6 @@ final class BooleanExpression {
     }
 
     private RuleProcessingException failure(String message) {
-        return new RuleProcessingException(message + ": expression=" + source + ", offset=" + index);
+        return new RuleProcessingException(message + ": " + source + " --> 偏移 " + index);
     }
 }

@@ -5,8 +5,5 @@
 @|bold,green   ██╔══██║ ██║  ██║ ██╔══╝   ╚════██║|@
 @|bold,green   ██║  ██║ ██████╔╝ ██║      ███████║|@
 @|bold,green   ╚═╝  ╚═╝ ╚═════╝  ╚═╝      ╚══════╝|@
-@|bold,yellow   ⚡|@ @|bold,white %1$s|@
-@|faint   ─────────────────────────────────────────────────────────|@
-@|bold,white   ➤ Runtime|@ @|faint %2$s • Java %3$s • Micronaut v%4$s|@
-@|bold,white   ➤ Profile|@ @|bold,yellow %5$s|@ @|faint • PID %6$d|@
-@|bold,white   ➤ Issue tracker:|@ @|faint https://github.com/fordes123/ad-filters-subscriber/issues|@
+@|bold,yellow   ⚡|@ @|bold,white AD Filter Subscriber • v%1$s|@
+@|bold,white  |@ @|faint https://github.com/fordes123/ad-filters-subscriber/issues|@

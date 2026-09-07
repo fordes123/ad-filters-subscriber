@@ -11,10 +11,14 @@ final class ByteBudget {
         this.maximum = maximum;
     }
 
-    void consume(int count, String source) {
-        consumed += count;
-        if (consumed > maximum) {
-            throw new InputException("输入及 include 累计大小超过上限: source=" + source + ", max-size=" + maximum);
+    void consume(long count, String source) {
+        if (count < 0 || count > remaining()) {
+            throw new InputException("输入及 include 累计大小超过上限: " + source + " --> " + maximum);
         }
+        consumed += count;
+    }
+
+    long remaining() {
+        return maximum - consumed;
     }
 }

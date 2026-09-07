@@ -31,8 +31,8 @@ public final class OutputTarget implements AutoCloseable {
         return writer.write(entry);
     }
 
-    public void finish() {
-        writer.finish();
+    public FinishResult finish() {
+        return writer.finish();
     }
 
     /** 成功关闭后包含补充白名单在内的最终规则条数。 */

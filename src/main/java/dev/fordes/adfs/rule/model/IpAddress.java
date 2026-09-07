@@ -15,7 +15,7 @@ public record IpAddress(IpFamily family, long high, long low) {
         }
         String[] parts = value.split("\\.", -1);
         if (parts.length != 4) {
-            throw new RuleProcessingException("IP 地址非法: value=" + value);
+            throw new RuleProcessingException("IP 地址非法: " + value);
         }
         long address = 0;
         for (String part : parts) {
@@ -29,7 +29,7 @@ public record IpAddress(IpFamily family, long high, long low) {
                 }
                 address = address << 8 | octet;
             } catch (NumberFormatException exception) {
-                throw new RuleProcessingException("IPv4 地址非法: value=" + value, exception);
+                throw new RuleProcessingException("IPv4 地址非法: " + value, exception);
             }
         }
         return new IpAddress(IpFamily.IPV4, 0, address);
@@ -37,17 +37,17 @@ public record IpAddress(IpFamily family, long high, long low) {
 
     private static IpAddress parseIpv6(String value) {
         if (value.indexOf('%') >= 0) {
-            throw new RuleProcessingException("IPv6 地址不得包含 zone id: value=" + value);
+            throw new RuleProcessingException("IPv6 地址不得包含 zone id: " + value);
         }
         try {
             InetAddress address = InetAddress.getByName(value);
             if (!(address instanceof Inet6Address)) {
-                throw new RuleProcessingException("IPv6 地址非法: value=" + value);
+                throw new RuleProcessingException("IPv6 地址非法: " + value);
             }
             ByteBuffer bytes = ByteBuffer.wrap(address.getAddress());
             return new IpAddress(IpFamily.IPV6, bytes.getLong(), bytes.getLong());
         } catch (UnknownHostException exception) {
-            throw new RuleProcessingException("IPv6 地址非法: value=" + value, exception);
+            throw new RuleProcessingException("IPv6 地址非法: " + value, exception);
         }
     }
 

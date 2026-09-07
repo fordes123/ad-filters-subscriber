@@ -58,7 +58,7 @@ public final class StagingWorkspace {
         } catch (OutputException exception) {
             throw exception;
         } catch (IOException exception) {
-            throw new OutputException("创建输出工作区失败: output-dir=" + outputDir, exception);
+            throw new OutputException("创建输出工作区失败: " + outputDir, exception);
         }
     }
 
@@ -67,7 +67,7 @@ public final class StagingWorkspace {
             FileLock lock = channel.tryLock();
             if (lock == null) {
                 channel.close();
-                throw new OutputException("输出目录已由另一进程锁定: lock=" + lockPath);
+                throw new OutputException("输出目录已由另一进程锁定: " + lockPath);
             }
             return lock;
         } catch (IOException exception) {
@@ -79,14 +79,14 @@ public final class StagingWorkspace {
             throw exception;
         } catch (OverlappingFileLockException exception) {
             channel.close();
-            throw new OutputException("输出目录已由当前进程锁定: lock=" + lockPath, exception);
+            throw new OutputException("输出目录已由当前进程锁定: " + lockPath, exception);
         }
     }
 
     static void verifyStableParent(Path parent, Path outputDir, Path previousDir) throws IOException {
         Path realParent = parent.toRealPath();
         if (!realParent.equals(parent) || Files.isSymbolicLink(parent)) {
-            throw new OutputException("output-dir 的父目录不得经过符号链接或目录联接: parent=" + parent);
+            throw new OutputException("output-dir 的父目录不得经过符号链接或目录联接: " + parent);
         }
         validateDirectoryState(outputDir, "正式输出目录");
         validateDirectoryState(previousDir, "恢复目录");
@@ -97,7 +97,7 @@ public final class StagingWorkspace {
             return;
         }
         if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
-            throw new OutputException(label + "必须是非符号链接目录: path=" + path);
+            throw new OutputException(label + "必须是非符号链接目录: " + path);
         }
     }
 
@@ -143,7 +143,7 @@ public final class StagingWorkspace {
         try {
             Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException exception) {
-            throw new OutputException("文件系统不支持所需的原子目录移动: source=" + source + ", target=" + target,
+            throw new OutputException("文件系统不支持所需的原子目录移动: " + source + " --> " + target,
                     exception);
         }
     }
@@ -219,17 +219,17 @@ public final class StagingWorkspace {
             try {
                 TreeDeleter.delete(runDir);
             } catch (IOException exception) {
-                failures.add(new OutputException("清理运行目录失败: run-dir=" + runDir, exception));
+                failures.add(new OutputException("清理运行目录失败: " + runDir, exception));
             }
             try {
                 lock.close();
             } catch (IOException exception) {
-                failures.add(new OutputException("释放输出目录锁失败: output-dir=" + outputDir, exception));
+                failures.add(new OutputException("释放输出目录锁失败: " + outputDir, exception));
             }
             try {
                 lockChannel.close();
             } catch (IOException exception) {
-                failures.add(new OutputException("关闭输出锁文件失败: output-dir=" + outputDir, exception));
+                failures.add(new OutputException("关闭输出锁文件失败: " + outputDir, exception));
             }
             if (!failures.isEmpty()) {
                 OutputException first = failures.getFirst();

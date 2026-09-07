@@ -17,10 +17,10 @@ import dev.fordes.adfs.config.InputSpec;
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.error.InputException;
-import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.FormatRegistry;
 import dev.fordes.adfs.format.OutputSet;
 import dev.fordes.adfs.format.OutputTarget;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleParser;
 import dev.fordes.adfs.format.WriteResult;
 import dev.fordes.adfs.format.adblock.DisableIndex;
@@ -30,10 +30,11 @@ import dev.fordes.adfs.publish.PublishManifest;
 import dev.fordes.adfs.publish.StagingWorkspace.Workspace;
 import dev.fordes.adfs.publish.StagingWorkspace;
 import dev.fordes.adfs.report.ProcessingMetrics;
+import dev.fordes.adfs.report.ProcessingStage;
 import dev.fordes.adfs.rule.dedup.CanonicalStore;
 import dev.fordes.adfs.rule.dedup.RuleDeduplicator;
-import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.normalize.RuleNormalizer;
 import dev.fordes.adfs.rule.spool.RuleSpool;
 import dev.fordes.adfs.source.SourceReader;
 import dev.fordes.adfs.source.SourceSession;
@@ -56,60 +57,74 @@ public final class ProcessingPipeline {
     public ProcessingResult process(EffectiveConfig config) {
         OffsetDateTime generatedAt = OffsetDateTime.now();
         formats.validateSupported(config);
-        log.info("开始处理，输入源 {} 个，输出目标 {} 个，DNS 检测{}",
+        log.info("开始处理, 输入源 {} 个, 输出目标 {} 个, DNS 检测{}",
                 config.inputs().size(), config.outputs().size(), config.dns().enabled() ? "已启用" : "未启用");
-        boolean logContext = log.isDebugEnabled();
-        Map<String, String> previousContext = logContext ? MDC.getCopyOfContextMap() : null;
+        Map<String, String> previousContext = MDC.getCopyOfContextMap();
         ProcessingMetrics metrics = new ProcessingMetrics(config.inputs().size());
         config.outputs().forEach(metrics::register);
         try (Workspace workspace = stagingWorkspace.open(config.outputDir())) {
             Path spoolPath = workspace.runDir().resolve(SPOOL_NAME);
             try (RuleSpool spool = new RuleSpool(spoolPath, config.rules().maxLength())) {
-                parseInputs(config, spool, metrics);
+                long inputStarted = System.nanoTime();
+                parseInputs(config, workspace.runDir(), spool, metrics);
                 spool.finishWriting();
-                log.info("输入解析完成，开始去重、{}规则转换", config.dns().enabled() ? "DNS 检测及" : "");
+                metrics.stageFinished(ProcessingStage.INPUT, inputStarted);
+                log.info("输入解析完成, 开始去重、{}规则转换", config.dns().enabled() ? "DNS 检测及" : "");
+                long processingStarted = System.nanoTime();
                 replay(config, workspace, spool, metrics, generatedAt);
+                metrics.stageFinished(ProcessingStage.PROCESSING, processingStarted);
             }
-            log.info("规则处理完成，开始校验并发布产物");
+            log.info("规则处理完成, 开始校验并发布产物");
+            long manifestStarted = System.nanoTime();
             PublishManifest manifest = PublishManifest.create(workspace, config.outputs());
+            manifest.entries().forEach(entry -> metrics.outputBytes(entry.path(), entry.size()));
+            metrics.stageFinished(ProcessingStage.MANIFEST, manifestStarted);
+            long publishStarted = System.nanoTime();
             publisher.publish(workspace, manifest);
-            log.info("产物发布完成，输出目录为「{}」", config.outputDir());
+            metrics.stageFinished(ProcessingStage.PUBLISH, publishStarted);
+            log.info("产物发布完成, 输出目录为「{}」", config.outputDir());
         } finally {
-            if (logContext) {
-                if (previousContext == null) {
-                    MDC.clear();
-                } else {
-                    MDC.setContextMap(previousContext);
-                }
+            if (previousContext == null) {
+                MDC.clear();
+            } else {
+                MDC.setContextMap(previousContext);
             }
         }
         return metrics.snapshot();
     }
 
-    private void parseInputs(EffectiveConfig config, RuleSpool spool, ProcessingMetrics metrics) {
+    private void parseInputs(EffectiveConfig config, Path runDir, RuleSpool spool, ProcessingMetrics metrics) {
+        int inputIndex = 0;
         for (InputSpec input : config.inputs()) {
             long started = System.nanoTime();
-            log.info("开始解析输入源「{}」", input.name());
-            if (log.isDebugEnabled()) {
-                String format = input.type().value();
-                if (input.dialect() != RuleDialect.NONE) {
-                    format += "/" + input.dialect().value();
-                }
-                MDC.put(RuleSpool.INPUT, input.name() + " (" + format + ")");
-                MDC.remove(RuleSpool.INPUT_RULE);
+            log.debug("开始解析输入源「{}」", input.name());
+            String format = input.type().value();
+            if (input.dialect() != RuleDialect.NONE) {
+                format += "/" + input.dialect().value();
             }
+            MDC.put(RuleSpool.INPUT, input.name() + " (" + format + ")");
+            MDC.remove(RuleSpool.INPUT_RULE);
             SourceReader sourceReader = sourceReaders.stream()
                     .filter(reader -> reader.supports(input))
                     .findFirst()
-                    .orElseThrow(() -> new InputException("没有可用的来源读取器: input=" + input.name()));
+                    .orElseThrow(() -> new InputException("没有可用的来源读取器: " + input.name()));
             RuleParser parser = formats.createParser(input, config);
-            try (SourceSession session = sourceReader.open(input, config)) {
-                parser.parse(session, entry -> {
-                    metrics.parsed(entry);
-                    spool.accept(entry);
-                });
+            long parsedBefore = metrics.parsedCount();
+            Path inputSpoolPath = runDir.resolve("input-" + inputIndex + ".bin");
+            try (RuleSpool inputSpool = new RuleSpool(inputSpoolPath, config.rules().maxLength());
+                    SourceSession session = sourceReader.open(input, config)) {
+                ParseResult result = parser.parse(session, entry -> inputSpool.accept(RuleNormalizer.normalize(entry)));
+                inputSpool.finishWriting();
+                if (result == ParseResult.COMPLETE) {
+                    inputSpool.replay(entry -> {
+                        metrics.parsed(entry);
+                        spool.accept(entry);
+                    });
+                }
+                metrics.inputFinished(input.name(), session.metrics(metrics.parsedCount() - parsedBefore));
             }
-            log.info("输入源「{}」解析完成，耗时 {} ms", input.name(), (System.nanoTime() - started) / 1_000_000);
+            log.info("输入源「{}」解析完成, 耗时 {} ms", input.name(), (System.nanoTime() - started) / 1_000_000);
+            inputIndex++;
         }
     }
 
@@ -135,7 +150,7 @@ public final class ProcessingPipeline {
                 });
             }
             metrics.finishHashTable(deduplicator.size(), deduplicator.capacity(), deduplicator.collisions());
-            outputs.targets().forEach(OutputTarget::finish);
+            outputs.targets().forEach(output -> metrics.finished(output.spec(), output.finish()));
             for (OutputTarget output : outputs.targets()) {
                 output.close();
                 OutputHeader.prepend(workspace, output.spec(), generatedAt, output.ruleCount());
@@ -192,6 +207,8 @@ public final class ProcessingPipeline {
             ProcessingMetrics metrics) {
         if (!deduplicator.add(entry)) {
             metrics.duplicate();
+            log.debug("重复规则, 已跳过:  {} --> 规则去重 | {}",
+                    MDC.get(RuleSpool.INPUT), MDC.get(RuleSpool.INPUT_RULE));
             return;
         }
         metrics.unique();
@@ -199,18 +216,9 @@ public final class ProcessingPipeline {
     }
 
     private static void distributeUnique(RuleEntry entry, OutputSet outputs, ProcessingMetrics metrics) {
-        boolean opaqueHandled = false;
         for (OutputTarget output : outputs.targets()) {
             WriteResult result = output.write(entry);
             metrics.wrote(output.spec(), result);
-            if (result == WriteResult.PASSTHROUGH || result == WriteResult.WHITELIST_REMOVED
-                    || result == WriteResult.DUPLICATE) {
-                opaqueHandled = true;
-            }
-        }
-        if (entry instanceof OpaqueRule opaque && !opaqueHandled) {
-            throw new RuleProcessingException("不透明规则没有兼容输出: type="
-                    + opaque.type().value() + ", dialect=" + opaque.dialect().value());
         }
     }
 }

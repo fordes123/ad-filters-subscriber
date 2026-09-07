@@ -9,6 +9,7 @@ import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.LineTokens;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.format.RuleParser;
 import dev.fordes.adfs.format.TextSource;
@@ -39,8 +40,10 @@ public final class DnsParser implements RuleParser {
     }
 
     @Override
-    public void parse(SourceSession session, RuleConsumer consumer) {
-        TextSource.read(session, limits, line -> parseLine(line, consumer));
+    public ParseResult parse(SourceSession session, RuleConsumer consumer) {
+        TextSource.read(session, limits,
+                text -> text.startsWith("#") || text.startsWith("!") || text.startsWith("["), line -> parseLine(line, consumer));
+        return ParseResult.COMPLETE;
     }
 
     private void parseLine(SourceLine line, RuleConsumer consumer) {
@@ -49,18 +52,25 @@ public final class DnsParser implements RuleParser {
                 || stripped.startsWith("[")) {
             return;
         }
-        String text = TextSource.ruleText(line, rules.minLength(), rules.maxLength());
-        List<String> tokens = LineTokens.beforeComment(text);
+        List<String> tokens = LineTokens.beforeComment(stripped);
         if (tokens.size() >= 2 && looksLikeAddress(tokens.getFirst())) {
+            int comment = stripped.indexOf('#');
+            String uncommented = comment < 0 ? stripped : stripped.substring(0, comment).stripTrailing();
+            String text = TextSource.ruleText(new SourceLine(line.source(), line.lineNumber(), uncommented),
+                    rules.minLength(), rules.maxLength());
+            tokens = LineTokens.beforeComment(text);
             IpAddress address = IpAddress.parse(tokens.getFirst());
-            for (String hostname : tokens.subList(1, tokens.size())) {
-                DomainName domain = new DomainName(hostname);
+            List<DomainName> domains = tokens.subList(1, tokens.size()).stream().map(DomainName::new).toList();
+            for (DomainName domain : domains) {
                 consumer.accept(address.isBlockingTarget()
                         ? new DomainRule(new ExactDomain(domain), RuleAction.BLOCK)
                         : new HostMappingRule(address, domain));
             }
             return;
         }
+        String uncommented = stripDomainsOnlyComment(stripped);
+        String text = TextSource.ruleText(new SourceLine(line.source(), line.lineNumber(), uncommented),
+                rules.minLength(), rules.maxLength());
         boolean allow = text.startsWith("@@");
         String body = allow ? text.substring(2) : text;
         int separator = AdblockSyntax.optionSeparator(body);
@@ -74,10 +84,10 @@ public final class DnsParser implements RuleParser {
                 String name = equals < 0 ? option : option.substring(0, equals);
                 if (FLAG_OPTIONS.contains(name)) {
                     if (equals >= 0) {
-                        throw new RuleProcessingException("DNS 标志选项不能携带参数: option=" + name);
+                        throw new RuleProcessingException("DNS 标志选项不能携带参数: " + name);
                     }
                 } else if (!VALUE_OPTIONS.contains(name) || equals < 0 || equals == option.length() - 1) {
-                    throw new RuleProcessingException("DNS 选项不支持或缺少参数: option=" + name);
+                    throw new RuleProcessingException("DNS 选项不支持或缺少参数: " + name);
                 }
             }
             consumer.accept(new OpaqueRule(RuleType.DNS, RuleDialect.ADGUARD, DomainEnvelope.UNKNOWN, text));
@@ -102,12 +112,20 @@ public final class DnsParser implements RuleParser {
                     allow ? RuleAction.ALLOW : RuleAction.BLOCK));
             return;
         }
-        throw new RuleProcessingException("DNS/AdGuard 规则超出当前语义子集: source="
-                + line.source() + ", line=" + line.lineNumber());
+        throw new RuleProcessingException("DNS/AdGuard 规则超出当前语义子集");
     }
 
     private static boolean looksLikeAddress(String value) {
         return value.indexOf(':') >= 0 || value.chars().allMatch(character -> Character.isDigit(character) || character == '.');
+    }
+
+    private static String stripDomainsOnlyComment(String text) {
+        int comment = text.indexOf('#');
+        if (comment < 0) {
+            return text;
+        }
+        String domain = text.substring(0, comment).stripTrailing();
+        return domain.isEmpty() || containsSyntax(domain) ? text : domain;
     }
 
     private static boolean containsSyntax(String value) {

@@ -6,10 +6,10 @@
 
 本项目用于聚合不同来源、不同格式的广告过滤规则，并按目标格式完成筛选、去重与转换。
 
-- [x] easylist
+- [x] adblock (adguard、ubo、abp)
 - [x] dns
 - [x] dnsmasq
-- [x] mihomo
+- [x] mihomo (classical、domain、ipcidr)
 - [x] smartdns
 - [x] sing-box
 - [x] hosts
@@ -32,9 +32,7 @@ adfs
 adfs -c path/to/application.yml
 ```
 
-未指定 `-c/--config` 时，依次查找程序目录的 `application.yml`、`config/application.yml`，使用第一个存在的文件。请复制 `config/application.yml` 并修改输入、输出。配置文件及输入、输出的相对路径以当前工作目录为基准。配置加载规则见[配置架构](./docs/architecture.md#5-配置架构)。
-
-日志同时写入标准错误流和当前工作目录的 `logs/adfs.log`。文件按天滚动，历史日志保留 30 天，总量上限 3GB。
+未指定 `-c/--config` 时，依次查找程序目录的 `application.yml`、`config/application.yml`，使用第一个存在的文件。
 
 ### GitHub Actions
 

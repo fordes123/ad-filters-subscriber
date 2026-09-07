@@ -3,9 +3,7 @@ package dev.fordes.adfs.format;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.slf4j.MDC;
@@ -18,7 +16,12 @@ import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.OutputException;
 import dev.fordes.adfs.rule.spool.RuleSpool;
+import dev.fordes.adfs.format.conversion.AdblockDomainConversion;
+import dev.fordes.adfs.format.conversion.DedupMode;
+import dev.fordes.adfs.format.conversion.ProjectedRule;
+import dev.fordes.adfs.format.conversion.RegexCompatibility;
 import dev.fordes.adfs.rule.conversion.ConversionDecision;
+import dev.fordes.adfs.rule.conversion.ConversionLoss;
 import dev.fordes.adfs.rule.conversion.ConversionPolicy;
 import dev.fordes.adfs.rule.conversion.ConversionScope;
 import dev.fordes.adfs.rule.conversion.WhitelistMatcher;
@@ -45,14 +48,17 @@ import dev.fordes.adfs.rule.model.MatchSide;
 import dev.fordes.adfs.rule.model.NetworkMatch;
 import dev.fordes.adfs.rule.model.Not;
 import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.PartyConstraint;
 import dev.fordes.adfs.rule.model.PortMatch;
 import dev.fordes.adfs.rule.model.ProcessMatch;
 import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
+import dev.fordes.adfs.rule.model.WildcardSyntax;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 
 @Slf4j
@@ -61,12 +67,12 @@ public final class BasicRuleWriter implements RuleWriter {
     private static final String LF = "\n";
     private final OutputSpec target;
     private final String outputName;
-    private final ConversionPolicy policy;
     private final List<DomainName> whitelist;
     private final OutputDeduplicator deduplicator;
     private final OutputStream output;
-    private final Map<ConversionDecision, Long> nonExactCounts = new LinkedHashMap<>();
+    private final OutputRuleProcessor<String> processor;
     private boolean finished;
+    private boolean yamlStarted;
 
     public BasicRuleWriter(
             OutputSpec target,
@@ -77,13 +83,11 @@ public final class BasicRuleWriter implements RuleWriter {
         this.target = target;
         this.outputName = target.path() + " (" + target.type().value()
                 + (target.dialect() == RuleDialect.NONE ? "" : "/" + target.dialect().value()) + ")";
-        this.policy = policy;
         this.whitelist = whitelist.stream().map(DomainName::new).sorted().toList();
         this.deduplicator = deduplicator;
         this.output = output;
-        if (target.container() == ContainerFormat.YAML) {
-            writeBytes("payload:" + LF);
-        }
+        this.processor = new OutputRuleProcessor<>(policy, this::shouldRemoveForWhitelist,
+                deduplicator, this::writeProjected);
     }
 
     @Override
@@ -99,9 +103,6 @@ public final class BasicRuleWriter implements RuleWriter {
             }
             return WriteResult.UNSUPPORTED;
         }
-        if (shouldRemoveForWhitelist(entry)) {
-            return WriteResult.WHITELIST_REMOVED;
-        }
         EncodingResult result = encode(entry);
         return switch (result) {
             case Unsupported(String reason) -> {
@@ -111,66 +112,105 @@ public final class BasicRuleWriter implements RuleWriter {
                 }
                 yield WriteResult.UNSUPPORTED;
             }
-            case Encoded(String text, ConversionDecision decision, boolean passthrough) -> {
-                if (!policy.allows(decision.scope())) {
-                    if (decision.scope() != ConversionScope.UNSUPPORTED) {
-                        countNonExact(decision);
-                    }
-                    if (log.isDebugEnabled()) {
-                        log.debug("规则未转换:  {} --> {} | {} --> 当前策略不允许该转换: {}",
-                                MDC.get(RuleSpool.INPUT), outputName, MDC.get(RuleSpool.INPUT_RULE), decision.reason());
-                    }
-                    yield WriteResult.UNSUPPORTED;
-                }
-                if (decision.scope() != ConversionScope.EXACT) {
-                    countNonExact(decision);
-                }
+            case Encoded(String text, ConversionDecision decision, boolean passthrough, RuleEntry effectiveRule) -> {
                 byte[] record = text.getBytes(StandardCharsets.UTF_8);
-                if (!deduplicator.add(record)) {
-                    yield WriteResult.DUPLICATE;
+                if (text.codePoints().anyMatch(Character::isISOControl)) {
+                    throw new OutputException("目标规则包含不可表达的控制字符: " + target.path());
                 }
-                String outputRule = wrap(text);
-                writeBytes(outputRule);
-                if (log.isTraceEnabled()) {
-                    log.trace("规则转换成功:  {} --> {} | {} --> {}",
-                            MDC.get(RuleSpool.INPUT), outputName, MDC.get(RuleSpool.INPUT_RULE),
-                            outputRule.substring(0, outputRule.length() - LF.length()));
-                }
-                yield passthrough ? WriteResult.PASSTHROUGH : WriteResult.WRITTEN;
+                DedupMode dedupMode = dev.fordes.adfs.rule.normalize.RuleOrder.requiresOrder(effectiveRule)
+                        ? DedupMode.ORDERED : DedupMode.SET_LIKE;
+                yield processor.process(new ProjectedRule<>(
+                        text, record, effectiveRule, decision, passthrough, dedupMode));
             }
         };
     }
 
     private EncodingResult encode(RuleEntry entry) {
         return switch (entry) {
+            case SafariRule safari -> encodeSafari(safari);
             case DomainRule(DomainPattern pattern, RuleAction action) -> encodeDomain(pattern, action);
             case HostMappingRule(IpAddress address, DomainName hostname) -> encodeHost(address, hostname);
             case IpCidrRule(IpAddress network, int prefixLength, RuleAction action) ->
                     encodeIpCidr(network, prefixLength, action);
             case RouteRule(MatchExpression expression) -> encodeRoute(expression);
             case AdblockNetworkRule rule -> encodeAdblockDomain(rule);
+            case DnsAddressRule rule -> DnsAddressEncoding.encode(rule, target.type())
+                    .<EncodingResult>map(text -> new Encoded(text,
+                            new ConversionDecision(ConversionScope.EXACT, "保留原生 DNS 响应赋值"), false, rule))
+                    .orElseGet(() -> new Unsupported("目标不能保留原生 DNS 响应语义"));
             case CosmeticRule _ -> new Unsupported("基础 Writer 不能表达元素规则");
             case OpaqueRule(var type, var dialect, var envelope, String payload) -> {
                 if (type == target.type() && dialect == target.dialect()) {
-                    yield new Encoded(payload, new ConversionDecision(ConversionScope.EXACT, "同方言透传"), true);
+                    yield new Encoded(payload, new ConversionDecision(ConversionScope.EXACT, "同方言透传"), true, entry);
                 }
                 yield new Unsupported("不透明规则不能跨格式或跨方言转换");
             }
         };
     }
 
-    private EncodingResult encodeAdblockDomain(AdblockNetworkRule rule) {
-        if (!isPureDomainRule(rule)) {
-            return new Unsupported("目标不能安全表达带约束或复杂主体的 Adblock 规则");
-        }
-        return encodeDomain(new SuffixDomain(new DomainName(rule.pattern().value())), rule.action());
+    private EncodingResult encodeSafari(SafariRule safari) {
+        return switch (encode(safari.rule())) {
+            case Encoded(String text, ConversionDecision decision, boolean passthrough, RuleEntry effectiveRule) ->
+                    new Encoded(text, decision.with(ConversionScope.EXPANDED,
+                            ConversionLoss.DROPPED_PLATFORM_CONSTRAINT,
+                            "目标格式不能保留 Safari 内容拦截器范围"), passthrough, effectiveRule);
+            case Unsupported unsupported -> unsupported;
+        };
     }
 
-    private static boolean isPureDomainRule(AdblockNetworkRule rule) {
-        return rule.pattern().kind() == AdblockPattern.Kind.DOMAIN_ANCHOR
-                && rule.includedResourceTypes().isEmpty() && rule.excludedResourceTypes().isEmpty()
-                && rule.domainConstraints().isEmpty() && rule.partyConstraint() == PartyConstraint.ANY
-                && !rule.matchCase() && !rule.important() && rule.modifiers().isEmpty();
+    private EncodingResult encodeAdblockDomain(AdblockNetworkRule rule) {
+        if (!rule.modifiers().isEmpty()) {
+            return new Unsupported("目标不能表达该 Adblock 动作修饰符");
+        }
+        if (rule.pattern().kind() == AdblockPattern.Kind.REGEX) {
+            return encodeAdblockRegex(rule);
+        }
+        if (!AdblockDomainConversion.supportsSubject(rule)) {
+            return new Unsupported("目标不能表达该 Adblock 规则主体");
+        }
+        boolean preserveImportant = target.type() == RuleType.DNS;
+        EncodingResult result = preserveImportant
+                ? encodeDnsAdblockDomain(rule)
+                : encodeDomain(new SuffixDomain(new DomainName(rule.pattern().value())), rule.action());
+        return switch (result) {
+            case Encoded(String text, ConversionDecision decision, boolean passthrough, RuleEntry effectiveRule) ->
+                    new Encoded(text, AdblockDomainConversion.decide(rule, preserveImportant, decision), passthrough, effectiveRule);
+            case Unsupported unsupported -> unsupported;
+        };
+    }
+
+    private EncodingResult encodeAdblockRegex(AdblockNetworkRule rule) {
+        if (target.type() != RuleType.MIHOMO) {
+            return new Unsupported("目标不能表达 Adblock 正则规则");
+        }
+        if (target.dialect() != RuleDialect.CLASSICAL) {
+            return new Unsupported("Mihomo domain/ipcidr behavior 不支持 DOMAIN-REGEX; 请使用 classical behavior");
+        }
+        var expression = RegexCompatibility.adblockToDomain(rule.pattern().value(), rule.matchCase());
+        if (expression.isEmpty()) {
+            return new Unsupported("Adblock 正则不属于目标可验证的公共语法子集");
+        }
+        EncodingResult result = encodeMihomoDomain(new RegexDomain(expression.orElseThrow()), rule.action());
+        boolean anchored = hasStringAnchor(rule.pattern().value());
+        ConversionDecision projection = new ConversionDecision(
+                anchored ? ConversionScope.MIXED : ConversionScope.REDUCED,
+                Set.of(ConversionLoss.URL_REGEX_PROJECTED_TO_DOMAIN),
+                anchored
+                        ? "Adblock 正则匹配完整请求 URL, 带字符串锚点的 Mihomo DOMAIN-REGEX 改为匹配域名后范围不可比"
+                        : "Mihomo DOMAIN-REGEX 仅匹配域名, 无法保留 Adblock 正则对完整请求 URL 的匹配");
+        return switch (result) {
+            case Encoded(String text, var decision, boolean passthrough, RuleEntry effectiveRule) ->
+                    new Encoded(text, AdblockDomainConversion.decide(rule, false, projection), passthrough, effectiveRule);
+            case Unsupported unsupported -> unsupported;
+        };
+    }
+
+    private static EncodingResult encodeDnsAdblockDomain(AdblockNetworkRule rule) {
+        String text = (rule.action() == RuleAction.ALLOW ? "@@" : "")
+                + "||" + rule.pattern().value() + "^"
+                + (rule.important() ? "$important" : "");
+        return new Encoded(text,
+                new ConversionDecision(ConversionScope.EXACT, "DNS/AdGuard 域名规则精确转换"), false, rule);
     }
 
     private EncodingResult encodeDomain(DomainPattern pattern, RuleAction action) {
@@ -192,7 +232,10 @@ public final class BasicRuleWriter implements RuleWriter {
             return new Unsupported("Hosts 不能表达关键词、通配符或正则域名");
         }
         return new Encoded("0.0.0.0 " + pattern.value(),
-                new ConversionDecision(scope, "Hosts 只能写出单一主机名"), false);
+                new ConversionDecision(scope,
+                        scope == ConversionScope.REDUCED ? Set.of(ConversionLoss.SUFFIX_REDUCED_TO_ROOT) : Set.of(),
+                        "Hosts 只能写出单一主机名"), false,
+                new DomainRule(new ExactDomain(new DomainName(pattern.value())), action));
     }
 
     private static EncodingResult encodeDnsDomain(DomainPattern pattern, RuleAction action) {
@@ -202,7 +245,7 @@ public final class BasicRuleWriter implements RuleWriter {
         }
         String text = pattern instanceof ExactDomain ? "|" + pattern.value() + "|" : "||" + pattern.value() + "^";
         return new Encoded(prefix + text,
-                new ConversionDecision(ConversionScope.EXACT, "DNS 域名边界精确转换"), false);
+                new ConversionDecision(ConversionScope.EXACT, "DNS 域名边界精确转换"), false, new DomainRule(pattern, action));
     }
 
     private static EncodingResult encodeDnsmasqDomain(DomainPattern pattern, RuleAction action) {
@@ -214,7 +257,10 @@ public final class BasicRuleWriter implements RuleWriter {
             return new Unsupported("Dnsmasq 不能安全表达复杂域名模式");
         }
         return new Encoded("address=/" + pattern.value() + "/#",
-                new ConversionDecision(scope, "Dnsmasq 域名段覆盖根域名及子域"), false);
+                new ConversionDecision(scope,
+                        scope == ConversionScope.EXPANDED ? Set.of(ConversionLoss.ROOT_EXPANDED_TO_SUBDOMAINS) : Set.of(),
+                        "Dnsmasq 域名段覆盖根域名及子域"), false,
+                new DomainRule(new SuffixDomain(new DomainName(pattern.value())), action));
     }
 
     private EncodingResult encodeMihomoDomain(DomainPattern pattern, RuleAction action) {
@@ -228,30 +274,76 @@ public final class BasicRuleWriter implements RuleWriter {
             String type = switch (pattern) {
                 case ExactDomain _ -> "DOMAIN";
                 case SuffixDomain _ -> "DOMAIN-SUFFIX";
+                case Subdomain _ -> "DOMAIN-REGEX";
                 case KeywordDomain _ -> "DOMAIN-KEYWORD";
                 case WildcardDomain _ -> "DOMAIN-WILDCARD";
-                case RegexDomain _ -> "";
+                case RegexDomain _ -> "DOMAIN-REGEX";
             };
-            if (type.isEmpty()) {
-                return new Unsupported("Mihomo classical 不能表达域名正则");
+            if (pattern instanceof WildcardDomain wildcard && wildcard.syntax() != WildcardSyntax.MIHOMO_CLASSICAL) {
+                return new Unsupported("通配符语义与 Mihomo classical 不同");
             }
-            return new Encoded(type + "," + csvField(pattern.value()),
-                    new ConversionDecision(ConversionScope.EXACT, "Mihomo classical 域名规则精确转换"), false);
+            String value = pattern instanceof Subdomain ? "^.+\\." + pattern.value().replace(".", "\\.") + "$"
+                    : pattern instanceof RegexDomain ? pattern.value() : csvField(pattern.value());
+            return new Encoded(type + "," + value,
+                    new ConversionDecision(ConversionScope.EXACT, "Mihomo classical 域名规则精确转换"), false,
+                    new DomainRule(pattern, action));
         }
-        String prefix = pattern instanceof SuffixDomain ? "." : "";
+        String prefix = pattern instanceof SuffixDomain ? "+." : pattern instanceof Subdomain ? "." : "";
         if (pattern instanceof RegexDomain || pattern instanceof KeywordDomain) {
-            return new Unsupported("Mihomo domain 不支持关键词或正则域名");
+            return new Unsupported("Mihomo domain behavior 不支持 DOMAIN-KEYWORD 或 DOMAIN-REGEX; 请使用 classical behavior");
+        }
+        if (pattern instanceof WildcardDomain wildcard && (wildcard.syntax() != WildcardSyntax.MIHOMO_DOMAIN
+                || !supportsMihomoDomainWildcard(wildcard.value()))) {
+            return new Unsupported("Mihomo domain behavior 的 * 只能作为完整域名段");
         }
         return new Encoded(prefix + pattern.value(),
-                new ConversionDecision(ConversionScope.EXACT, "Mihomo domain 可精确表达域名模式"), false);
+                new ConversionDecision(ConversionScope.EXACT, "Mihomo domain 可精确表达域名模式"), false,
+                new DomainRule(pattern, action));
+    }
+
+    private static boolean supportsMihomoDomainWildcard(String value) {
+        String labels = value.startsWith("+.") ? value.substring(2) : value.startsWith(".") ? value.substring(1) : value;
+        for (String label : labels.split("\\.", -1)) {
+            if (label.isEmpty() || label.indexOf('*') >= 0 && !label.equals("*")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean hasStringAnchor(String expression) {
+        boolean escaped = false;
+        boolean characterClass = false;
+        for (int index = 0; index < expression.length(); index++) {
+            char character = expression.charAt(index);
+            if (escaped) {
+                if (!characterClass && (character == 'A' || character == 'Z' || character == 'z')) {
+                    return true;
+                }
+                escaped = false;
+            } else if (character == '\\') {
+                escaped = true;
+            } else if (character == '[') {
+                characterClass = true;
+            } else if (character == ']') {
+                characterClass = false;
+            } else if (!characterClass && (character == '^' || character == '$')) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private EncodingResult encodeHost(IpAddress address, DomainName hostname) {
         return switch (target.type()) {
             case HOSTS, DNS -> new Encoded(address.text() + " " + hostname.value(),
-                    new ConversionDecision(ConversionScope.EXACT, "目标支持 hosts 映射"), false);
+                    new ConversionDecision(ConversionScope.EXACT, "目标支持 hosts 映射"), false,
+                    new HostMappingRule(address, hostname));
             case DNSMASQ -> new Encoded("address=/" + hostname.value() + "/" + address.text(),
-                    new ConversionDecision(ConversionScope.EXPANDED, "Dnsmasq address 同时覆盖子域"), false);
+                    new ConversionDecision(ConversionScope.EXPANDED,
+                            Set.of(ConversionLoss.HOST_MAPPING_EXPANDED_TO_SUBDOMAINS),
+                            "Dnsmasq address 同时覆盖子域"), false,
+                    new DomainRule(new SuffixDomain(hostname), RuleAction.BLOCK));
             case MIHOMO, ADBLOCK, SING_BOX, SMARTDNS -> new Unsupported("目标不能表达地址映射");
         };
     }
@@ -266,7 +358,8 @@ public final class BasicRuleWriter implements RuleWriter {
                 ? (network.family() == IpFamily.IPV4 ? "IP-CIDR," : "IP-CIDR6,") + cidr
                 : cidr;
         return new Encoded(text,
-                new ConversionDecision(ConversionScope.EXACT, "Mihomo ipcidr 精确转换"), false);
+                new ConversionDecision(ConversionScope.EXACT, "Mihomo ipcidr 精确转换"), false,
+                new IpCidrRule(network, prefixLength, action));
     }
 
     private EncodingResult encodeRoute(MatchExpression expression) {
@@ -275,7 +368,7 @@ public final class BasicRuleWriter implements RuleWriter {
         }
         String text = switch (expression) {
             case DomainMatch(DomainPattern pattern) -> switch (encodeMihomoDomain(pattern, RuleAction.BLOCK)) {
-                case Encoded(String encoded, var decision, var passthrough) -> encoded;
+                case Encoded(String encoded, var decision, var passthrough, var effectiveRule) -> encoded;
                 case Unsupported _ -> "";
             };
             case PortMatch(MatchSide side, int first, int last) ->
@@ -297,7 +390,7 @@ public final class BasicRuleWriter implements RuleWriter {
             return new Unsupported("Mihomo classical 尚不能表达该复合规则");
         }
         return new Encoded(text, new ConversionDecision(ConversionScope.EXACT, "Mihomo classical 路由规则精确转换"),
-                false);
+                false, new RouteRule(expression));
     }
 
     private static String csvField(String value) {
@@ -308,55 +401,34 @@ public final class BasicRuleWriter implements RuleWriter {
     }
 
     private boolean shouldRemoveForWhitelist(RuleEntry entry) {
-        if (whitelist.isEmpty()) {
-            return false;
-        }
-        if (target.type() == RuleType.DNS) {
-            return entry instanceof OpaqueRule;
-        }
-        return switch (entry) {
-            case DomainRule(DomainPattern pattern, RuleAction action) ->
-                    action == RuleAction.BLOCK && whitelist.stream().anyMatch(domain -> intersects(pattern, domain));
-            case HostMappingRule(var address, DomainName hostname) ->
-                    whitelist.stream().anyMatch(domain -> isWithin(hostname, domain));
-            case IpCidrRule _ -> false;
-            case AdblockNetworkRule rule -> rule.action() == RuleAction.BLOCK && (!isPureDomainRule(rule)
-                    || whitelist.stream().anyMatch(domain -> isWithin(
-                            new DomainName(rule.pattern().value()), domain)
-                            || isWithin(domain, new DomainName(rule.pattern().value()))));
-            case RouteRule(var expression) ->
-                    whitelist.stream().anyMatch(domain -> WhitelistMatcher.intersects(expression, domain));
-            case CosmeticRule _ -> true;
-            case OpaqueRule _ -> true;
-        };
-    }
-
-    private static boolean intersects(DomainPattern pattern, DomainName whitelist) {
-        if (!(pattern instanceof ExactDomain || pattern instanceof SuffixDomain)) {
-            return true;
-        }
-        DomainName domain = pattern instanceof ExactDomain exact ? exact.domain() : ((SuffixDomain) pattern).domain();
-        if (pattern instanceof ExactDomain) {
-            return isWithin(domain, whitelist);
-        }
-        return isWithin(domain, whitelist) || isWithin(whitelist, domain);
-    }
-
-    private static boolean isWithin(DomainName candidate, DomainName parent) {
-        return candidate.equals(parent) || candidate.value().endsWith("." + parent.value());
+        return target.type() != RuleType.DNS && WhitelistMatcher.matches(entry, whitelist);
     }
 
     private String wrap(String text) {
         if (target.container() == ContainerFormat.YAML) {
+            if (!yamlStarted) {
+                writeBytes("payload:" + LF);
+                yamlStarted = true;
+            }
             return "  - '" + text.replace("'", "''") + "'" + LF;
         }
         return text + LF;
     }
 
+    private void writeProjected(String text) {
+        String outputRule = wrap(text);
+        writeBytes(outputRule);
+        log.trace("规则转换成功:  {} --> {} | {} --> {}",
+                MDC.get(RuleSpool.INPUT), outputName, MDC.get(RuleSpool.INPUT_RULE),
+                outputRule.substring(0, outputRule.length() - LF.length()));
+    }
+
     @Override
-    public void finish() {
+    public FinishResult finish() {
+        long added = 0;
+        long duplicates = 0;
         if (finished) {
-            return;
+            return FinishResult.EMPTY;
         }
         if (target.type() == RuleType.DNS) {
             for (DomainName domain : whitelist) {
@@ -364,30 +436,30 @@ public final class BasicRuleWriter implements RuleWriter {
                 byte[] record = exception.getBytes(StandardCharsets.UTF_8);
                 if (deduplicator.add(record)) {
                     writeBytes(wrap(exception));
+                    added++;
+                } else {
+                    duplicates++;
                 }
             }
         }
-        nonExactCounts.forEach((decision, count) -> log.warn(
-                "目标「{}」有 {} 条规则{}，转换范围为 {}: {}",
-                target.path(), count, policy.allows(decision.scope()) ? "采用非精确转换" : "被转换策略拒绝",
-                decision.scope().value(), decision.reason()));
+        if (target.container() == ContainerFormat.YAML && !yamlStarted) {
+            writeBytes("payload: []" + LF);
+            yamlStarted = true;
+        }
         try {
             output.flush();
             finished = true;
         } catch (IOException exception) {
-            throw new OutputException("刷新目标输出失败: path=" + target.path(), exception);
+            throw new OutputException("刷新目标输出失败: " + target.path(), exception);
         }
-    }
-
-    private void countNonExact(ConversionDecision decision) {
-        nonExactCounts.merge(decision, 1L, Long::sum);
+        return new FinishResult(added, duplicates);
     }
 
     private void writeBytes(String value) {
         try {
             output.write(value.getBytes(StandardCharsets.UTF_8));
         } catch (IOException exception) {
-            throw new OutputException("写入目标输出失败: path=" + target.path(), exception);
+            throw new OutputException("写入目标输出失败: " + target.path(), exception);
         }
     }
 
@@ -396,7 +468,7 @@ public final class BasicRuleWriter implements RuleWriter {
         try (output) {
             finish();
         } catch (IOException exception) {
-            throw new OutputException("关闭目标输出失败: path=" + target.path(), exception);
+            throw new OutputException("关闭目标输出失败: " + target.path(), exception);
         }
     }
 }
@@ -404,7 +476,7 @@ public final class BasicRuleWriter implements RuleWriter {
 sealed interface EncodingResult permits Encoded, Unsupported {
 }
 
-record Encoded(String text, ConversionDecision decision, boolean passthrough) implements EncodingResult {
+record Encoded(String text, ConversionDecision decision, boolean passthrough, RuleEntry effectiveRule) implements EncodingResult {
 }
 
 record Unsupported(String reason) implements EncodingResult {

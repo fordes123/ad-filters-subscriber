@@ -15,19 +15,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 public final class DnsjavaResolver implements DnsResolver {
 
     private static final int DEFAULT_DNS_PORT = 53;
-    private final DnsConfig config;
     private final Cache cache;
     private final LookupSession session;
-    private final AtomicLong retryCount = new AtomicLong();
 
     public DnsjavaResolver(DnsConfig config) {
-        this.config = config;
         this.cache = createCache(config.cache());
         this.session = createSession(config, cache);
     }
@@ -38,24 +34,14 @@ public final class DnsjavaResolver implements DnsResolver {
         try {
             name = Name.fromString(domain.value() + ".");
         } catch (TextParseException exception) {
-            throw new DnsException("规范域名无法转换为 DNS Name: domain=" + domain.value(), exception);
+            throw new DnsException("规范域名无法转换为 DNS Name: " + domain.value(), exception);
         }
-        LookupFailedException lastFailure = new LookupFailedException(name, Type.A);
-        for (int attempt = 0; attempt <= config.retries(); attempt++) {
-            try {
-                return queryAddress(name);
-            } catch (LookupFailedException exception) {
-                lastFailure = exception;
-                if (attempt == config.retries()) {
-                    break;
-                }
-                retryCount.incrementAndGet();
-                log.debug("DNS 重试:  {} --> 第 {} 次尝试，最多尝试 {} 次",
-                        domain.value(), attempt + 2, config.retries() + 1);
-            }
+        try {
+            return queryAddress(name);
+        } catch (DnsException | LookupFailedException exception) {
+            log.debug("DNS 查询失败:  {} --> A/AAAA | {}", domain.value(), exception.getMessage());
+            return DnsResult.FAILED;
         }
-        throw new DnsException("DNS 查询重试耗尽: domain=" + domain.value() + ", query=A/AAAA, cause="
-                + lastFailure.getClass().getSimpleName() + ": " + lastFailure.getMessage(), lastFailure);
     }
 
     private DnsResult queryAddress(Name name) {
@@ -79,41 +65,19 @@ public final class DnsjavaResolver implements DnsResolver {
 
     private LookupResult await(Name name, int type) {
         try {
-            LookupResult result = session.lookupAsync(name, type).toCompletableFuture().join();
-            if (log.isTraceEnabled()) {
-                log.trace("DNS 解析成功:  {} ({}) --> {}", name, Type.string(type),
-                        result.getRecords().stream().map(record -> record.rdataToString()).toList());
-            }
-            return result;
+            return session.lookupAsync(name, type).toCompletableFuture().join();
         } catch (CompletionException exception) {
             Throwable cause = exception.getCause();
-            if (cause instanceof NoSuchDomainException) {
-                if (log.isTraceEnabled()) {
-                    log.trace("DNS 解析完成:  {} ({}) --> 域名不存在(NXDOMAIN)", name, Type.string(type));
-                }
-            } else if (cause instanceof NoSuchRRSetException) {
-                if (log.isTraceEnabled()) {
-                    log.trace("DNS 解析完成:  {} ({}) --> 没有对应记录", name, Type.string(type));
-                }
-            } else if (log.isDebugEnabled()) {
-                log.debug("DNS 解析失败:  {} ({}) --> {}",
-                        name, Type.string(type), cause.toString());
-            }
             if (cause instanceof LookupFailedException lookupFailure) {
                 throw lookupFailure;
             }
-            throw new DnsException("DNS 异步查询异常: name=" + name + ", type=" + Type.string(type), cause);
+            throw new DnsException("DNS 异步查询异常: " + name + " --> " + Type.string(type), cause);
         }
     }
 
     @Override
     public int cacheSize() {
         return cache.getSize();
-    }
-
-    @Override
-    public long retries() {
-        return retryCount.get();
     }
 
     private static Cache createCache(DnsCacheConfig config) {
@@ -125,8 +89,9 @@ public final class DnsjavaResolver implements DnsResolver {
     }
 
     private static LookupSession createSession(DnsConfig config, Cache cache) {
-        Resolver resolver = config.servers().isEmpty() ? createSystemResolver(config.timeout())
-                : createConfiguredResolver(config.servers(), config.timeout());
+        Resolver resolver = config.servers().isEmpty()
+                ? createSystemResolver(config.timeout(), config.retries())
+                : createConfiguredResolver(config.servers(), config.timeout(), config.retries());
         return LookupSession.builder()
                 .resolver(resolver)
                 .cache(cache)
@@ -135,17 +100,20 @@ public final class DnsjavaResolver implements DnsResolver {
                 .build();
     }
 
-    private static Resolver createSystemResolver(Duration timeout) {
-        try {
-            SimpleResolver resolver = new SimpleResolver();
+    private static Resolver createSystemResolver(Duration timeout, int retries) {
+        List<Resolver> resolvers = new ArrayList<>();
+        for (InetSocketAddress address : ResolverConfig.getCurrentConfig().servers()) {
+            SimpleResolver resolver = new SimpleResolver(address);
             resolver.setTimeout(timeout);
-            return resolver;
-        } catch (UnknownHostException exception) {
-            throw new DnsException("无法初始化系统 DNS 解析器", exception);
+            resolvers.add(resolver);
         }
+        if (resolvers.isEmpty()) {
+            throw new DnsException("系统未提供 DNS 服务器");
+        }
+        return createExtendedResolver(resolvers, timeout, retries);
     }
 
-    private static Resolver createConfiguredResolver(List<String> servers, Duration timeout) {
+    private static Resolver createConfiguredResolver(List<String> servers, Duration timeout, int retries) {
         List<Resolver> resolvers = new ArrayList<>();
         for (String server : servers) {
             InetSocketAddress address = parseServer(server);
@@ -153,9 +121,16 @@ public final class DnsjavaResolver implements DnsResolver {
             resolver.setTimeout(timeout);
             resolvers.add(resolver);
         }
+        return createExtendedResolver(resolvers, timeout, retries);
+    }
+
+    private static ExtendedResolver createExtendedResolver(
+            List<Resolver> resolvers, Duration timeout, int retries) {
         ExtendedResolver resolver = new ExtendedResolver(resolvers);
-        resolver.setRetries(1);
-        resolver.setTimeout(timeout);
+        int attempts = Math.incrementExact(retries);
+        resolver.setRetries(attempts);
+        int timeoutSlots = Math.addExact(Math.multiplyExact(resolvers.size(), attempts), 1);
+        resolver.setTimeout(timeout.multipliedBy(timeoutSlots));
         return resolver;
     }
 
@@ -180,7 +155,7 @@ public final class DnsjavaResolver implements DnsResolver {
         try {
             return new InetSocketAddress(InetAddress.getByName(address), port);
         } catch (UnknownHostException exception) {
-            throw new DnsException("已校验的 DNS 地址无法解析: server=" + server, exception);
+            throw new DnsException("已校验的 DNS 地址无法解析: " + server, exception);
         }
     }
 

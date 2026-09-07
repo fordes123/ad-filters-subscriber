@@ -10,11 +10,14 @@ import dev.fordes.adfs.format.WriteResult;
 import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.Rule;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.SafariRule;
 
 public final class ProcessingMetrics {
 
     private final long startedNanos = System.nanoTime();
     private final long inputs;
+    private final Map<ProcessingStage, Long> stages = new java.util.EnumMap<>(ProcessingStage.class);
+    private final Map<String, InputMetrics> sources = new LinkedHashMap<>();
     private final Map<Path, MutableOutputMetrics> outputs = new LinkedHashMap<>();
     private long semanticRules;
     private long opaqueRules;
@@ -23,9 +26,9 @@ public final class ProcessingMetrics {
     private long dnsChecked;
     private long dnsValid;
     private long dnsInvalid;
+    private long dnsFailed;
     private long dnsSkipped;
     private long dnsMerged;
-    private long dnsRetries;
     private int dnsCacheEntries;
     private int hashEntries;
     private int hashCapacity;
@@ -41,9 +44,30 @@ public final class ProcessingMetrics {
 
     public void parsed(RuleEntry entry) {
         switch (entry) {
+            case SafariRule safari -> parsed(safari.rule());
             case Rule _ -> semanticRules++;
             case OpaqueRule _ -> opaqueRules++;
         }
+    }
+
+    public void stageFinished(ProcessingStage stage, long started) {
+        stages.put(stage, (System.nanoTime() - started) / 1_000_000);
+    }
+
+    public void outputBytes(Path path, long bytes) {
+        outputs.get(path).bytes(bytes);
+    }
+
+    public long parsedCount() {
+        return semanticRules + opaqueRules;
+    }
+
+    public void inputFinished(String name, InputMetrics metrics) {
+        sources.put(name, metrics);
+    }
+
+    public void finished(OutputSpec output, dev.fordes.adfs.format.FinishResult result) {
+        outputs.get(output.path()).finish(result);
     }
 
     public void unique() {
@@ -76,6 +100,10 @@ public final class ProcessingMetrics {
         dnsInvalid++;
     }
 
+    public void dnsFailed() {
+        dnsFailed++;
+    }
+
     public void dnsSkipped() {
         dnsSkipped++;
     }
@@ -84,8 +112,7 @@ public final class ProcessingMetrics {
         dnsMerged++;
     }
 
-    public void finishDns(long retries, int cacheEntries) {
-        dnsRetries = retries;
+    public void finishDns(int cacheEntries) {
         dnsCacheEntries = cacheEntries;
     }
 
@@ -93,11 +120,11 @@ public final class ProcessingMetrics {
         Map<Path, OutputMetrics> snapshots = new LinkedHashMap<>();
         outputs.forEach((path, metrics) -> snapshots.put(path, metrics.snapshot()));
         long elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000;
-        DnsMetrics dns = new DnsMetrics(dnsChecked, dnsValid, dnsInvalid, dnsSkipped, dnsMerged,
-                dnsRetries, dnsCacheEntries);
+        DnsMetrics dns = new DnsMetrics(dnsChecked, dnsValid, dnsInvalid, dnsFailed, dnsSkipped, dnsMerged,
+                dnsCacheEntries);
         return new ProcessingResult(inputs, semanticRules, opaqueRules, uniqueRules, duplicateRules,
                 hashEntries, hashCapacity, hashCollisions, dns,
-                snapshots, elapsedMillis);
+                snapshots, elapsedMillis, sources, stages);
     }
 }
 
@@ -108,6 +135,17 @@ final class MutableOutputMetrics {
     private long duplicates;
     private long whitelistRemoved;
     private long unsupported;
+    private long whitelistAdded;
+    private long bytes;
+
+    void bytes(long count) {
+        bytes = count;
+    }
+
+    void finish(dev.fordes.adfs.format.FinishResult result) {
+        whitelistAdded += result.whitelistAdded();
+        duplicates += result.duplicates();
+    }
 
     void add(WriteResult result) {
         switch (result) {
@@ -120,6 +158,6 @@ final class MutableOutputMetrics {
     }
 
     OutputMetrics snapshot() {
-        return new OutputMetrics(written, passthrough, duplicates, whitelistRemoved, unsupported);
+        return new OutputMetrics(written, passthrough, duplicates, whitelistRemoved, unsupported, whitelistAdded, bytes);
     }
 }

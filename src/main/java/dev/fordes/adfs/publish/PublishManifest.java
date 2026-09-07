@@ -39,16 +39,16 @@ public record PublishManifest(List<Entry> entries) {
             Path relative = output.path().normalize();
             Path file = workspace.nextDir().resolve(relative).normalize();
             if (!file.startsWith(workspace.nextDir()) || !expected.add(relative)) {
-                throw new OutputException("发布清单包含越界或重复路径: path=" + relative);
+                throw new OutputException("发布清单包含越界或重复路径: " + relative);
             }
             if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                throw new OutputException("声明的输出不是普通文件: path=" + file);
+                throw new OutputException("声明的输出不是普通文件: " + file);
             }
             try (FileChannel channel = FileChannel.open(file, StandardOpenOption.WRITE)) {
                 channel.force(true);
                 entries.add(new Entry(relative, Files.size(file), hash(file)));
             } catch (IOException exception) {
-                throw new OutputException("校验输出文件失败: path=" + file, exception);
+                throw new OutputException("校验输出文件失败: " + file, exception);
             }
         }
         validateExactFiles(workspace.nextDir(), expected);
@@ -64,14 +64,14 @@ public record PublishManifest(List<Entry> entries) {
             Path file = workspace.nextDir().resolve(entry.path()).normalize();
             if (!file.startsWith(workspace.nextDir()) || Files.isSymbolicLink(file)
                     || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-                throw new OutputException("待发布输出状态已改变: path=" + file);
+                throw new OutputException("待发布输出状态已改变: " + file);
             }
             try {
                 if (Files.size(file) != entry.size() || !hash(file).equals(entry.sha256())) {
-                    throw new OutputException("待发布输出大小或 SHA-256 已改变: path=" + file);
+                    throw new OutputException("待发布输出大小或 SHA-256 已改变: " + file);
                 }
             } catch (IOException exception) {
-                throw new OutputException("重新校验待发布输出失败: path=" + file, exception);
+                throw new OutputException("重新校验待发布输出失败: " + file, exception);
             }
             expected.add(entry.path());
         }
@@ -85,10 +85,10 @@ public record PublishManifest(List<Entry> entries) {
                     .map(nextDir::relativize)
                     .collect(Collectors.toUnmodifiableSet());
             if (!actual.equals(expected)) {
-                throw new OutputException("待发布文件集合与配置不一致: expected=" + expected + ", actual=" + actual);
+                throw new OutputException("待发布文件集合与配置不一致: " + expected + " --> " + actual);
             }
         } catch (IOException exception) {
-            throw new OutputException("检查待发布文件集合失败: next-dir=" + nextDir, exception);
+            throw new OutputException("检查待发布文件集合失败: " + nextDir, exception);
         }
     }
 
@@ -102,7 +102,7 @@ public record PublishManifest(List<Entry> entries) {
         try {
             Files.writeString(path, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
         } catch (IOException exception) {
-            throw new OutputException("写入发布清单失败: path=" + path, exception);
+            throw new OutputException("写入发布清单失败: " + path, exception);
         }
     }
 

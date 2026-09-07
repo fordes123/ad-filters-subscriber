@@ -19,12 +19,20 @@ import tools.jackson.core.json.JsonFactory;
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.error.OutputException;
 import dev.fordes.adfs.format.RuleWriter;
+import dev.fordes.adfs.format.FinishResult;
+import dev.fordes.adfs.format.OutputRuleProcessor;
 import dev.fordes.adfs.format.WriteResult;
+import dev.fordes.adfs.format.conversion.DedupMode;
+import dev.fordes.adfs.format.conversion.ProjectedRule;
+import dev.fordes.adfs.format.conversion.AdblockDomainConversion;
+import dev.fordes.adfs.rule.conversion.ConversionDecision;
+import dev.fordes.adfs.rule.conversion.ConversionLoss;
+import dev.fordes.adfs.rule.conversion.ConversionPolicy;
+import dev.fordes.adfs.rule.conversion.ConversionScope;
 import dev.fordes.adfs.rule.spool.RuleSpool;
 import dev.fordes.adfs.rule.conversion.WhitelistMatcher;
 import dev.fordes.adfs.rule.dedup.OutputDeduplicator;
 import dev.fordes.adfs.rule.model.AdblockNetworkRule;
-import dev.fordes.adfs.rule.model.AdblockPattern;
 import dev.fordes.adfs.rule.model.AllOf;
 import dev.fordes.adfs.rule.model.AnyOf;
 import dev.fordes.adfs.rule.model.CosmeticRule;
@@ -43,14 +51,16 @@ import dev.fordes.adfs.rule.model.MatchSide;
 import dev.fordes.adfs.rule.model.NetworkMatch;
 import dev.fordes.adfs.rule.model.Not;
 import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.PartyConstraint;
 import dev.fordes.adfs.rule.model.PortMatch;
 import dev.fordes.adfs.rule.model.ProcessMatch;
 import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.Subdomain;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 
 @Slf4j
@@ -63,20 +73,28 @@ public final class SingBoxWriter implements RuleWriter {
     private final OutputDeduplicator deduplicator;
     private final JsonFactory factory = new JsonFactory();
     private final JsonGenerator output;
+    private final OutputRuleProcessor<byte[]> processor;
     private boolean finished;
 
-    public SingBoxWriter(OutputSpec target, Set<String> whitelist, OutputDeduplicator deduplicator, OutputStream stream) {
+    public SingBoxWriter(
+            OutputSpec target,
+            ConversionPolicy policy,
+            Set<String> whitelist,
+            OutputDeduplicator deduplicator,
+            OutputStream stream) {
         this.target = target;
         this.outputName = target.path() + " (" + target.type().value() + ")";
-        this.whitelist = whitelist.stream().map(DomainName::new).sorted().toList();
+        this.whitelist = whitelist.stream().map(DomainName::new).toList();
         this.deduplicator = deduplicator;
         try {
             output = factory.createGenerator(ObjectWriteContext.empty(), stream);
             output.writeStartObject();
             output.writeNumberProperty("version", FORMAT_VERSION);
             output.writeArrayPropertyStart("rules");
+            processor = new OutputRuleProcessor<>(policy, this::shouldRemove,
+                    deduplicator, this::writeProjected);
         } catch (JacksonException exception) {
-            throw new OutputException("初始化 Sing-box 输出失败: path=" + target.path(), exception);
+            throw new OutputException("初始化 Sing-box 输出失败: " + target.path(), exception);
         }
     }
 
@@ -93,9 +111,6 @@ public final class SingBoxWriter implements RuleWriter {
             }
             return WriteResult.UNSUPPORTED;
         }
-        if (shouldRemove(entry)) {
-            return WriteResult.WHITELIST_REMOVED;
-        }
         Optional<SingEncoding> encoded = encode(entry);
         if (encoded.isEmpty()) {
             if (log.isDebugEnabled()) {
@@ -105,24 +120,13 @@ public final class SingBoxWriter implements RuleWriter {
             return WriteResult.UNSUPPORTED;
         }
         SingEncoding value = encoded.orElseThrow();
-        if (!deduplicator.add(value.bytes())) {
-            return WriteResult.DUPLICATE;
-        }
-        try {
-            String text = new String(value.bytes(), StandardCharsets.UTF_8);
-            output.writeRawValue(text);
-            if (log.isTraceEnabled()) {
-                log.trace("规则转换成功:  {} --> {} | {} --> {}",
-                        MDC.get(RuleSpool.INPUT), outputName, MDC.get(RuleSpool.INPUT_RULE), text);
-            }
-            return value.passthrough() ? WriteResult.PASSTHROUGH : WriteResult.WRITTEN;
-        } catch (JacksonException exception) {
-            throw new OutputException("写入 Sing-box 规则失败: path=" + target.path(), exception);
-        }
+        return processor.process(new ProjectedRule<>(value.bytes(), value.bytes(), value.effectiveRule(),
+                value.decision(), value.passthrough(), DedupMode.SET_LIKE));
     }
 
     private Optional<SingEncoding> encode(RuleEntry entry) {
         return switch (entry) {
+            case SafariRule safari -> encodeSafari(safari);
             case DomainRule(DomainPattern pattern, RuleAction action) -> action == RuleAction.ALLOW
                     || pattern instanceof WildcardDomain
                     ? Optional.empty() : Optional.of(encodeExpression(new DomainMatch(pattern), false));
@@ -131,23 +135,32 @@ public final class SingBoxWriter implements RuleWriter {
                             new IpCidrMatch(MatchSide.DESTINATION, network, prefixLength), false));
             case RouteRule(MatchExpression expression) -> supports(expression)
                     ? Optional.of(encodeExpression(expression, false)) : Optional.empty();
-            case AdblockNetworkRule rule -> isPureDomainRule(rule) && rule.action() == RuleAction.BLOCK
-                    ? Optional.of(encodeExpression(new DomainMatch(
-                            new SuffixDomain(new DomainName(rule.pattern().value()))), false)) : Optional.empty();
+            case AdblockNetworkRule rule -> encodeAdblockDomain(rule);
             case CosmeticRule _ -> Optional.empty();
-            case HostMappingRule _ -> Optional.empty();
+            case HostMappingRule _, DnsAddressRule _ -> Optional.empty();
             case OpaqueRule opaque -> opaque.type() == target.type() && opaque.dialect() == target.dialect()
-                    ? Optional.of(new SingEncoding(opaque.payload().getBytes(StandardCharsets.UTF_8), true))
+                    ? Optional.of(new SingEncoding(opaque.payload().getBytes(StandardCharsets.UTF_8), true,
+                            exact("同格式透传"), opaque))
                     : Optional.empty();
         };
     }
 
-    private static boolean isPureDomainRule(AdblockNetworkRule rule) {
-        return rule.pattern().kind() == AdblockPattern.Kind.DOMAIN_ANCHOR
-                && rule.includedResourceTypes().isEmpty() && rule.excludedResourceTypes().isEmpty()
-                && rule.domainConstraints().isEmpty()
-                && rule.partyConstraint() == PartyConstraint.ANY
-                && !rule.matchCase() && !rule.important() && rule.modifiers().isEmpty();
+    private Optional<SingEncoding> encodeSafari(SafariRule safari) {
+        return encode(safari.rule()).map(encoded -> new SingEncoding(encoded.bytes(), encoded.passthrough(),
+                encoded.decision().with(ConversionScope.EXPANDED, ConversionLoss.DROPPED_PLATFORM_CONSTRAINT,
+                        "目标格式不能保留 Safari 内容拦截器范围"), encoded.effectiveRule()));
+    }
+
+    private Optional<SingEncoding> encodeAdblockDomain(AdblockNetworkRule rule) {
+        if (rule.action() == RuleAction.ALLOW || !AdblockDomainConversion.supportsSubject(rule)) {
+            return Optional.empty();
+        }
+        ConversionDecision decision = AdblockDomainConversion.decide(rule, false,
+                new ConversionDecision(ConversionScope.EXACT, "Sing-box 后缀域名规则精确转换"));
+        SingEncoding encoding = encodeExpression(new DomainMatch(
+                new SuffixDomain(new DomainName(rule.pattern().value()))), false);
+        return Optional.of(new SingEncoding(encoding.bytes(), encoding.passthrough(), decision,
+                encoding.effectiveRule()));
     }
 
     private static boolean supports(MatchExpression expression) {
@@ -165,9 +178,10 @@ public final class SingBoxWriter implements RuleWriter {
         try (JsonGenerator generator = factory.createGenerator(ObjectWriteContext.empty(), bytes)) {
             writeExpression(generator, expression, false);
             generator.flush();
-            return new SingEncoding(bytes.toByteArray(), passthrough);
+            return new SingEncoding(bytes.toByteArray(), passthrough, exact("Sing-box 规则精确转换"),
+                    new RouteRule(expression));
         } catch (JacksonException exception) {
-            throw new OutputException("编码 Sing-box 规则失败: path=" + target.path(), exception);
+            throw new OutputException("编码 Sing-box 规则失败: " + target.path(), exception);
         }
     }
 
@@ -215,7 +229,7 @@ public final class SingBoxWriter implements RuleWriter {
     private static void writeDomain(JsonGenerator generator, DomainPattern pattern) throws JacksonException {
         String field = switch (pattern) {
             case ExactDomain _ -> "domain";
-            case SuffixDomain _ -> "domain_suffix";
+            case SuffixDomain _, Subdomain _ -> "domain_suffix";
             case KeywordDomain _ -> "domain_keyword";
             case RegexDomain _ -> "domain_regex";
             case WildcardDomain _ -> "";
@@ -223,7 +237,7 @@ public final class SingBoxWriter implements RuleWriter {
         if (field.isEmpty()) {
             throw new OutputException("Sing-box 不能表达 Mihomo 通配域名");
         }
-        generator.writeArrayPropertyStart(field).writeString(pattern.value()).writeEndArray();
+        generator.writeArrayPropertyStart(field).writeString((pattern instanceof Subdomain ? "." : "") + pattern.value()).writeEndArray();
     }
 
     private static void writeLogical(JsonGenerator generator, String mode, List<MatchExpression> expressions)
@@ -238,41 +252,13 @@ public final class SingBoxWriter implements RuleWriter {
     }
 
     private boolean shouldRemove(RuleEntry entry) {
-        if (whitelist.isEmpty()) {
-            return false;
-        }
-        return switch (entry) {
-            case IpCidrRule _ -> false;
-            case DomainRule(var pattern, RuleAction action) -> action == RuleAction.BLOCK && intersects(pattern);
-            case HostMappingRule(var address, DomainName hostname) -> whitelist.stream().anyMatch(
-                    allowed -> within(hostname.value(), allowed.value()));
-            case AdblockNetworkRule rule -> rule.action() == RuleAction.BLOCK && (!isPureDomainRule(rule)
-                    || whitelist.stream().anyMatch(allowed -> within(rule.pattern().value(), allowed.value())
-                            || within(allowed.value(), rule.pattern().value())));
-            case RouteRule(var expression) ->
-                    whitelist.stream().anyMatch(allowed -> WhitelistMatcher.intersects(expression, allowed));
-            case CosmeticRule _, OpaqueRule _ -> true;
-        };
-    }
-
-    private boolean intersects(DomainPattern pattern) {
-        if (!(pattern instanceof ExactDomain || pattern instanceof SuffixDomain)) {
-            return true;
-        }
-        String domain = pattern.value();
-        return whitelist.stream().anyMatch(allowed -> pattern instanceof ExactDomain
-                ? within(domain, allowed.value())
-                : within(domain, allowed.value()) || within(allowed.value(), domain));
-    }
-
-    private static boolean within(String candidate, String parent) {
-        return candidate.equals(parent) || candidate.endsWith("." + parent);
+        return WhitelistMatcher.matches(entry, whitelist);
     }
 
     @Override
-    public void finish() {
+    public FinishResult finish() {
         if (finished) {
-            return;
+            return FinishResult.EMPTY;
         }
         try {
             output.writeEndArray();
@@ -280,8 +266,9 @@ public final class SingBoxWriter implements RuleWriter {
             output.flush();
             finished = true;
         } catch (JacksonException exception) {
-            throw new OutputException("结束 Sing-box 输出失败: path=" + target.path(), exception);
+            throw new OutputException("结束 Sing-box 输出失败: " + target.path(), exception);
         }
+        return FinishResult.EMPTY;
     }
 
     @Override
@@ -289,12 +276,27 @@ public final class SingBoxWriter implements RuleWriter {
         try (output) {
             finish();
         } catch (JacksonException exception) {
-            throw new OutputException("关闭 Sing-box 输出失败: path=" + target.path(), exception);
+            throw new OutputException("关闭 Sing-box 输出失败: " + target.path(), exception);
+        }
+    }
+
+    private static ConversionDecision exact(String reason) {
+        return new ConversionDecision(ConversionScope.EXACT, reason);
+    }
+
+    private void writeProjected(byte[] bytes) {
+        try {
+            String text = new String(bytes, StandardCharsets.UTF_8);
+            output.writeRawValue(text);
+            log.trace("规则转换成功:  {} --> {} | {} --> {}",
+                    MDC.get(RuleSpool.INPUT), outputName, MDC.get(RuleSpool.INPUT_RULE), text);
+        } catch (JacksonException exception) {
+            throw new OutputException("写入 Sing-box 规则失败: " + target.path(), exception);
         }
     }
 }
 
-record SingEncoding(byte[] bytes, boolean passthrough) {
+record SingEncoding(byte[] bytes, boolean passthrough, ConversionDecision decision, RuleEntry effectiveRule) {
 
     SingEncoding {
         bytes = bytes.clone();

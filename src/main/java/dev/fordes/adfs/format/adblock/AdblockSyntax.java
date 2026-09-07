@@ -6,7 +6,7 @@ import java.util.Locale;
 
 import dev.fordes.adfs.error.RuleProcessingException;
 
-/** 保留选项原文，并识别正则、引号和转义中的分隔符。 */
+/** 保留选项原文, 并识别正则、引号和转义中的分隔符。 */
 public final class AdblockSyntax {
 
     private static final List<String> COSMETIC_OPERATORS = List.of(
@@ -16,12 +16,56 @@ public final class AdblockSyntax {
     }
 
     public static List<String> networkOptions(String text) {
-        if (!text.startsWith("/") && !text.startsWith("@@/")
-                && COSMETIC_OPERATORS.stream().anyMatch(text::contains)) {
+        if (cosmeticOperator(text) != null) {
             return List.of();
         }
         int separator = optionSeparator(text);
         return separator < 0 ? List.of() : options(text.substring(separator + 1));
+    }
+
+    public static CosmeticLocation cosmeticOperator(String text) {
+        boolean escaped = false;
+        char quote = 0;
+        int depth = 0;
+        for (int index = 0; index < text.length(); index++) {
+            char character = text.charAt(index);
+            if (escaped) {
+                escaped = false;
+            } else if (character == '\\') {
+                escaped = true;
+            } else if (quote != 0) {
+                if (character == quote) {
+                    quote = 0;
+                }
+            } else if (character == '\'' || character == '"') {
+                quote = character;
+            } else if (character == '(') {
+                depth++;
+            } else if (character == ')' && depth > 0) {
+                depth--;
+            } else if (depth == 0) {
+                for (String operator : COSMETIC_OPERATORS) {
+                    if (text.startsWith(operator, index) && cosmeticPrefix(text.substring(0, index))) {
+                        return new CosmeticLocation(index, operator);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean cosmeticPrefix(String prefix) {
+        if (prefix.isEmpty() || prefix.startsWith("[")) {
+            return true;
+        }
+        if (prefix.startsWith("@@")) {
+            return false;
+        }
+        if (prefix.startsWith("/")) {
+            return prefix.length() > 1 && prefix.endsWith("/");
+        }
+        return prefix.indexOf('/') < 0 && prefix.indexOf('|') < 0
+                && prefix.indexOf('^') < 0 && prefix.indexOf('$') < 0;
     }
 
     public static int optionSeparator(String text) {
@@ -79,7 +123,8 @@ public final class AdblockSyntax {
             if (index == start) {
                 int equals = text.indexOf('=', start);
                 String name = equals < 0 ? "" : text.substring(start, equals).strip().toLowerCase(Locale.ROOT);
-                if (name.equals("replace") || name.equals("urltransform") || name.equals("urlskip")) {
+                if (name.equals("replace") || name.equals("urltransform")
+                        || name.equals("uritransform") || name.equals("urlskip")) {
                     int end = rawOptionEnd(text, equals + 1);
                     options.add(requireOption(text.substring(start, end)));
                     if (end == text.length()) {
@@ -103,8 +148,9 @@ public final class AdblockSyntax {
                 if (character == quote) {
                     quote = 0;
                 }
-            } else if (character == '/' && index > start && text.charAt(index - 1) == '=') {
-                String name = text.substring(start, index - 1).strip().toLowerCase(Locale.ROOT);
+            } else if (character == '/' && regexValueStart(text, start, index)) {
+                int equals = text.indexOf('=', start);
+                String name = text.substring(start, equals).strip().toLowerCase(Locale.ROOT);
                 regexSlashes = name.equals("replace") || name.equals("urltransform") ? 2 : 1;
             } else if (character == '\'' || character == '"') {
                 quote = character;
@@ -134,6 +180,17 @@ public final class AdblockSyntax {
         return option;
     }
 
+    private static boolean regexValueStart(String text, int optionStart, int slash) {
+        int equals = text.indexOf('=', optionStart);
+        if (equals < 0 || equals >= slash) {
+            return false;
+        }
+        int entryStart = text.lastIndexOf('|', slash - 1);
+        entryStart = Math.max(equals, entryStart) + 1;
+        String prefix = text.substring(entryStart, slash).strip();
+        return prefix.isEmpty() || prefix.equals("~");
+    }
+
     private static int rawOptionEnd(String text, int start) {
         boolean escaped = false;
         for (int index = start; index < text.length(); index++) {
@@ -150,5 +207,8 @@ public final class AdblockSyntax {
             throw new RuleProcessingException("Adblock 替换选项的转义未结束");
         }
         return text.length();
+    }
+
+    public record CosmeticLocation(int index, String operator) {
     }
 }

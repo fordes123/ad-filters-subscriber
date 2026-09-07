@@ -53,16 +53,15 @@ adfs:
     output-dir: rule
 
     # 默认自动生成文件头；设为 "" 可全局关闭，单文件仍可覆盖。
-    # 支持 {{name}}（输出相对路径）、{{type}}、{{dialect}}（无方言时为空）、
+    # 支持 {{name}}（输出相对路径）、{{type}}、{{dialect}}（无方言时等同于 type）、
     # {{date}}（同次运行共用的带时区生成时间）、{{total}}（最终规则数，含补充白名单）。
     # 未知或不完整变量会报错；旧版 ${...} 模板需改为 {{...}}。
     # 如需相同规则生成相同内容，请从模板中移除 {{date}}。
     file-header: |
-      Title: {{name}}
-      Format: {{type}}
-      Updated: {{date}}
-      Rules: {{total}}
-      Generator: AdFS
+      Title: adblock list of {{dialect}}
+      Total Size: {{total}}
+      Last Modified: {{date}}
+      Powered by https://github.com/fordes123/ad-filters-subscriber
 
     input:
       max-size: 67108864  # 单个输入的大小上限，单位为字节（64 MiB）。
@@ -82,14 +81,15 @@ adfs:
       preprocessor:
         max-depth: 32
         max-include-depth: 8
-        true-tokens: []  # 条件预处理的真值标记，例如 [env_ublock]。
+        true-tokens: []  # 输入条件环境的附加真值标记，例如 [env_firefox]；所有输入共享，false 不可配置。
 
     conversion:
       allow-expansion: false  # 是否允许转换扩大匹配范围。
-      allow-reduction: false  # 是否允许转换缩小匹配范围。
+      allow-reduction: true  # 是否允许转换缩小匹配范围。
 
     dns:
       enabled: false  # 启用后对可提取确定域名的规则进行 DNS 验证。
+      strict-mode: false  # 启用后只检测语义严格为精确域名的规则，关闭时，对形式如 ||example.com^ 的规则也将启用检测
       servers: []  # 留空使用系统 DNS；支持 IP 或 IP:端口，IPv6 使用方括号。
       concurrency: 64
       timeout: 3s

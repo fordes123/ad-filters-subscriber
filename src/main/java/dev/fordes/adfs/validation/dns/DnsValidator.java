@@ -33,8 +33,9 @@ import dev.fordes.adfs.rule.model.HostMappingRule;
 import dev.fordes.adfs.rule.model.IpCidrRule;
 import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.model.RouteRule;
-import dev.fordes.adfs.rule.model.SuffixDomain;
 import dev.fordes.adfs.rule.dedup.RuleDeduplicator;
 import dev.fordes.adfs.rule.spool.RuleSpool;
 
@@ -42,6 +43,18 @@ import dev.fordes.adfs.rule.spool.RuleSpool;
 @Slf4j
 public final class DnsValidator {
 
+    private static final DnsResolver FAILED_RESOLVER = new DnsResolver() {
+        @Override
+        public DnsResult resolve(DomainName domain) {
+            return DnsResult.FAILED;
+        }
+
+        @Override
+        public int cacheSize() {
+            return 0;
+        }
+
+    };
     private final Function<DnsConfig, DnsResolver> resolverFactory;
 
     public DnsValidator() {
@@ -59,7 +72,7 @@ public final class DnsValidator {
             Predicate<RuleEntry> filter,
             RuleConsumer consumer,
             ProcessingMetrics metrics) {
-        DnsResolver resolver = resolverFactory.apply(config);
+        DnsResolver resolver = createResolver(config);
         Semaphore permits = new Semaphore(config.concurrency(), true);
         ConcurrentHashMap<DomainName, CompletableFuture<DnsResult>> inFlight = new ConcurrentHashMap<>();
         Queue<PendingRule> window = new ArrayDeque<>(config.concurrency());
@@ -70,13 +83,15 @@ public final class DnsValidator {
                 }
                 if (!deduplicator.add(entry)) {
                     metrics.duplicate();
+                    log.debug("重复规则, 已跳过:  {} --> 规则去重 | {}",
+                            MDC.get(RuleSpool.INPUT), MDC.get(RuleSpool.INPUT_RULE));
                     return;
                 }
                 metrics.unique();
                 if (window.size() == config.concurrency()) {
                     flushFirst(window, consumer, metrics);
                 }
-                Optional<DomainName> domain = domain(entry);
+                Optional<DomainName> domain = domain(entry, config.strictMode());
                 if (domain.isEmpty()) {
                     metrics.dnsSkipped();
                     window.add(new PendingRule(entry, CompletableFuture.completedFuture(DnsResult.SKIPPED),
@@ -92,7 +107,16 @@ public final class DnsValidator {
                 flushFirst(window, consumer, metrics);
             }
         }
-        metrics.finishDns(resolver.retries(), resolver.cacheSize());
+        metrics.finishDns(resolver.cacheSize());
+    }
+
+    private DnsResolver createResolver(DnsConfig config) {
+        try {
+            return resolverFactory.apply(config);
+        } catch (RuntimeException exception) {
+            log.debug("DNS 检测初始化失败, 所有待检测规则将保留", exception);
+            return FAILED_RESOLVER;
+        }
     }
 
     private static CompletableFuture<DnsResult> resolve(
@@ -116,10 +140,9 @@ public final class DnsValidator {
                 promise.complete(resolver.resolve(domain));
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
-                promise.completeExceptionally(new DnsException(
-                        "DNS 查询等待并发许可时被中断: domain=" + domain.value(), exception));
-            } catch (RuntimeException exception) {
-                promise.completeExceptionally(exception);
+                promise.complete(DnsResult.FAILED);
+            } catch (RuntimeException _) {
+                promise.complete(DnsResult.FAILED);
             } finally {
                 if (acquired) {
                     permits.release();
@@ -130,16 +153,19 @@ public final class DnsValidator {
         return promise;
     }
 
-    private static Optional<DomainName> domain(RuleEntry entry) {
+    private static Optional<DomainName> domain(RuleEntry entry, boolean strictMode) {
         return switch (entry) {
+            case SafariRule safari -> domain(safari.rule(), strictMode);
             case DomainRule(var pattern, var action) -> switch (pattern) {
-                case ExactDomain(DomainName domain) -> Optional.of(domain);
-                case SuffixDomain(DomainName domain) -> Optional.of(domain);
+                case ExactDomain(DomainName domain) when action == dev.fordes.adfs.rule.model.RuleAction.BLOCK -> Optional.of(domain);
                 default -> Optional.empty();
             };
-            case AdblockNetworkRule rule -> rule.pattern().kind() == AdblockPattern.Kind.DOMAIN_ANCHOR
-                    ? Optional.of(new DomainName(rule.pattern().value())) : Optional.empty();
-            case CosmeticRule _, HostMappingRule _, IpCidrRule _, RouteRule _, OpaqueRule _ -> Optional.empty();
+            case AdblockNetworkRule rule when !strictMode
+                    && rule.action() == dev.fordes.adfs.rule.model.RuleAction.BLOCK
+                    && rule.pattern().kind() == AdblockPattern.Kind.DOMAIN_ANCHOR ->
+                    DomainName.tryParse(rule.pattern().value());
+            case AdblockNetworkRule _ -> Optional.empty();
+            case DnsAddressRule _, CosmeticRule _, HostMappingRule _, IpCidrRule _, RouteRule _, OpaqueRule _ -> Optional.empty();
         };
     }
 
@@ -164,12 +190,18 @@ public final class DnsValidator {
             MDC.setContextMap(pending.logContext());
         }
         try {
+            log.trace("DNS 检测结果:  {} --> DNS 检测 | {} --> {}",
+                    MDC.get(RuleSpool.INPUT), MDC.get(RuleSpool.INPUT_RULE), result);
             switch (result) {
                 case VALID -> {
                     metrics.dnsValid();
                     consumer.accept(pending.entry());
                 }
                 case INVALID -> metrics.dnsInvalid();
+                case FAILED -> {
+                    metrics.dnsFailed();
+                    consumer.accept(pending.entry());
+                }
                 case SKIPPED -> consumer.accept(pending.entry());
             }
         } finally {
@@ -182,7 +214,7 @@ public final class DnsValidator {
             }
         }
     }
-}
 
-record PendingRule(RuleEntry entry, CompletableFuture<DnsResult> result, Map<String, String> logContext) {
+    record PendingRule(RuleEntry entry, CompletableFuture<DnsResult> result, Map<String, String> logContext) {
+    }
 }

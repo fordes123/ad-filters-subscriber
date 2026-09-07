@@ -53,6 +53,7 @@ public record EffectiveConfig(
 
     public record DnsConfig(
             boolean enabled,
+            boolean strictMode,
             List<String> servers,
             int concurrency,
             Duration timeout,

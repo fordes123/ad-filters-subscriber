@@ -7,6 +7,11 @@ public interface SourceSession extends AutoCloseable {
 
     SourceStream openInclude(SourceStream parent, String reference);
 
+    /** 记录已报告并跳过的非法规则或预处理指令。 */
+    void invalidRule();
+
+    dev.fordes.adfs.report.InputMetrics metrics(long rules);
+
     @Override
     void close();
 }

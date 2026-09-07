@@ -39,7 +39,7 @@ public final class TestConfigs {
                 new HttpConfig(Duration.ofSeconds(1), Duration.ofSeconds(1), 2, 0, "AdFS-Test/1"),
                 rules(),
                 new ConversionConfig(false, false),
-                new DnsConfig(dnsEnabled, List.of(), 4, Duration.ofSeconds(1), 0, 4,
+                new DnsConfig(dnsEnabled, false, List.of(), 4, Duration.ofSeconds(1), 0, 4,
                         new DnsCacheConfig(1_024, Duration.ofMinutes(1), Duration.ofSeconds(30))),
                 List.of(inputSpec),
                 outputs);

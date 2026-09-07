@@ -7,7 +7,7 @@ public interface RuleWriter extends AutoCloseable {
 
     WriteResult write(RuleEntry entry);
 
-    void finish();
+    FinishResult finish();
 
     @Override
     void close();

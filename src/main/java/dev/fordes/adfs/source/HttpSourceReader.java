@@ -1,7 +1,6 @@
 package dev.fordes.adfs.source;
 
 import java.io.ByteArrayOutputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -60,8 +59,8 @@ final class HttpSession implements SourceSession {
         this.name = name;
         this.config = config;
         this.state = state;
-        this.rootDirectory = uri.resolve(".").normalize();
         this.root = open(uri, 0);
+        this.rootDirectory = root.location().resolve(".").normalize();
     }
 
     @Override
@@ -75,10 +74,10 @@ final class HttpSession implements SourceSession {
         try {
             requested = URI.create(reference);
         } catch (IllegalArgumentException exception) {
-            throw new InputException("远程 include URI 非法: reference=" + reference, exception);
+            throw new InputException("远程 include URI 非法: " + reference, exception);
         }
         if (requested.isAbsolute() || requested.getAuthority() != null) {
-            throw new InputException("远程 include 只接受相对 URI: reference=" + reference);
+            throw new InputException("远程 include 只接受相对 URI: " + reference);
         }
         URI include = parent.location().resolve(reference);
         validateProtocol(include);
@@ -89,7 +88,11 @@ final class HttpSession implements SourceSession {
     private static boolean sameOrigin(URI left, URI right) {
         return left.getScheme().equalsIgnoreCase(right.getScheme())
                 && left.getHost().equalsIgnoreCase(right.getHost())
-                && left.getPort() == right.getPort();
+                && effectivePort(left) == effectivePort(right);
+    }
+
+    private static int effectivePort(URI uri) {
+        return uri.getPort() >= 0 ? uri.getPort() : uri.getScheme().equalsIgnoreCase("https") ? 443 : 80;
     }
 
     private void validateInclude(URI uri) {
@@ -97,10 +100,10 @@ final class HttpSession implements SourceSession {
             String path = new URI(null, null, uri.getPath(), null).normalize().getPath();
             if (!sameOrigin(uri, rootDirectory) || !path.startsWith(rootDirectory.getPath())
                     || path.indexOf('\\') >= 0) {
-                throw new InputException("远程 include 越过根来源基址: uri=" + safeUri(uri));
+                throw new InputException("远程 include 越过根来源基址: " + safeUri(uri));
             }
         } catch (URISyntaxException exception) {
-            throw new InputException("远程 include 路径非法: uri=" + safeUri(uri), exception);
+            throw new InputException("远程 include 路径非法: " + safeUri(uri), exception);
         }
     }
 
@@ -109,17 +112,18 @@ final class HttpSession implements SourceSession {
         for (int attempt = 0; attempt <= config.retries(); attempt++) {
             HttpAttempt result = request(uri, depth);
             switch (result) {
-                case HttpSuccess(URI responseUri, InputStream stream) -> {
-                    return state.register(responseUri, safeUri(responseUri), depth, stream);
+                case HttpSuccess(URI responseUri, DownloadedSource downloaded) -> {
+                    return state.registerDownloaded(responseUri, safeUri(responseUri), depth, downloaded);
                 }
                 case HttpFailure(InputException failure, boolean retryable, Duration retryAfter) -> {
-                    log.debug("HTTP 输入读取失败:  {} ({}) --> {}，第 {} 次尝试，最多尝试 {} 次",
+                    log.debug("HTTP 输入读取失败:  {} ({}) --> {}, 第 {} 次尝试, 最多尝试 {} 次",
                             name, safeUri(uri), failure.getMessage(), attempt + 1, config.retries() + 1);
                     if (!retryable || attempt == config.retries()) {
                         throw failure;
                     }
-                    log.debug("HTTP 重试:  {} --> 第 {} 次尝试，最多尝试 {} 次",
-                            name, attempt + 2, config.retries() + 1);
+                    log.warn("HTTP 读取失败, 准备重试:  {} ({}) --> 第 {} 次尝试, 最多尝试 {} 次",
+                            name, safeUri(uri), attempt + 2, config.retries() + 1, failure);
+                    state.retry();
                     waitBeforeRetry(retryAfter, attempt, uri);
                 }
             }
@@ -145,36 +149,47 @@ final class HttpSession implements SourceSession {
                 if (isRedirect(status)) {
                     if (redirects == config.maxRedirects()) {
                         connection.disconnect();
-                        return new HttpFailure(new InputException("HTTP 重定向超过上限: input=" + name
-                                + ", uri=" + safeUri(initialUri) + ", max-redirects=" + config.maxRedirects()), false,
+                        return new HttpFailure(new InputException("HTTP 重定向超过上限: " + name
+                                + " --> " + safeUri(initialUri) + " --> " + config.maxRedirects()), false,
                                 Duration.ZERO);
                     }
                     String location = connection.getHeaderField("Location");
                     connection.disconnect();
                     if (location == null || location.isBlank()) {
-                        return new HttpFailure(new InputException("HTTP 重定向缺少 Location: input=" + name
-                                + ", uri=" + safeUri(uri) + ", status=" + status), false, Duration.ZERO);
+                        return new HttpFailure(new InputException("HTTP 重定向缺少 Location: " + name
+                                + " --> " + safeUri(uri) + " --> HTTP " + status), false, Duration.ZERO);
                     }
                     uri = uri.resolve(location);
                     continue;
                 }
                 if (status >= HttpURLConnection.HTTP_OK && status < HttpURLConnection.HTTP_MULT_CHOICE) {
-                    InputStream input = new DisconnectingInputStream(connection.getInputStream(), connection);
-                    return new HttpSuccess(uri, input);
+                    long expected = connection.getContentLengthLong();
+                    if (expected > state.remainingBytes()) {
+                        throw new InputException("HTTP 响应超过输入剩余预算: " + safeUri(uri));
+                    }
+                    DownloadedSource downloaded = DownloadedSource.receive(connection.getInputStream(),
+                            state.remainingBytes(), expected, safeUri(uri));
+                    return new HttpSuccess(uri, downloaded);
                 }
                 String body = readErrorBody(connection);
                 boolean retryable = status == 408 || status == 429 || status >= 500;
                 Duration retryAfter = parseRetryAfter(connection.getHeaderField("Retry-After"));
                 connection.disconnect();
-                return new HttpFailure(new InputException("HTTP 输入响应失败: input=" + name
-                        + ", uri=" + safeUri(uri) + ", status=" + status + ", body=" + body), retryable, retryAfter);
+                return new HttpFailure(new InputException("HTTP 输入响应失败: " + name
+                        + " --> " + safeUri(uri) + " --> HTTP " + status + " --> " + body), retryable, retryAfter);
+            } catch (IllegalArgumentException exception) {
+                throw new InputException("HTTP URI 或请求参数非法: " + safeUri(uri), exception);
             } catch (IOException exception) {
                 if (connection != null) {
                     connection.disconnect();
                 }
-                return new HttpFailure(new InputException("HTTP 输入读取失败: input=" + name
-                        + ", uri=" + safeUri(uri) + ", cause=" + exception.getClass().getSimpleName()
+                return new HttpFailure(new InputException("HTTP 输入读取失败: " + name
+                        + " --> " + safeUri(uri) + " --> " + exception.getClass().getSimpleName()
                         + ": " + exception.getMessage(), exception), true, Duration.ZERO);
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
             }
         }
         throw new IllegalStateException("重定向循环必须在循环内结束");
@@ -240,14 +255,14 @@ final class HttpSession implements SourceSession {
             Thread.sleep(delay);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new InputException("HTTP 重试等待被中断: uri=" + safeUri(uri), exception);
+            throw new InputException("HTTP 重试等待被中断: " + safeUri(uri), exception);
         }
     }
 
     private static void validateProtocol(URI uri) {
         String scheme = uri.getScheme();
-        if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
-            throw new InputException("HTTP 来源或重定向协议非法: uri=" + safeUri(uri));
+        if (scheme == null || uri.getHost() == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
+            throw new InputException("HTTP 来源或重定向协议非法: " + safeUri(uri));
         }
     }
 
@@ -261,6 +276,16 @@ final class HttpSession implements SourceSession {
     }
 
     @Override
+    public void invalidRule() {
+        state.invalidRule();
+    }
+
+    @Override
+    public dev.fordes.adfs.report.InputMetrics metrics(long rules) {
+        return state.metrics(rules);
+    }
+
+    @Override
     public void close() {
         state.close();
     }
@@ -269,27 +294,8 @@ final class HttpSession implements SourceSession {
 sealed interface HttpAttempt permits HttpFailure, HttpSuccess {
 }
 
-record HttpSuccess(URI uri, InputStream stream) implements HttpAttempt {
+record HttpSuccess(URI uri, DownloadedSource downloaded) implements HttpAttempt {
 }
 
 record HttpFailure(InputException failure, boolean retryable, Duration retryAfter) implements HttpAttempt {
-}
-
-final class DisconnectingInputStream extends FilterInputStream {
-
-    private final HttpURLConnection connection;
-
-    DisconnectingInputStream(InputStream input, HttpURLConnection connection) {
-        super(input);
-        this.connection = connection;
-    }
-
-    @Override
-    public void close() throws IOException {
-        try {
-            super.close();
-        } finally {
-            connection.disconnect();
-        }
-    }
 }

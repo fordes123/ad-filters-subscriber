@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
 
 import jakarta.inject.Singleton;
 
@@ -34,17 +36,26 @@ import dev.fordes.adfs.rule.dedup.OutputDeduplicator;
 @Singleton
 public final class FormatRegistry {
 
+    private static final Map<RuleType, Set<RuleDialect>> SUPPORTED_DIALECTS = Map.of(
+            RuleType.HOSTS, Set.of(RuleDialect.NONE),
+            RuleType.DNS, Set.of(RuleDialect.ADGUARD),
+            RuleType.DNSMASQ, Set.of(RuleDialect.NONE),
+            RuleType.MIHOMO, Set.of(RuleDialect.DOMAIN, RuleDialect.IPCIDR, RuleDialect.CLASSICAL),
+            RuleType.SING_BOX, Set.of(RuleDialect.NONE),
+            RuleType.SMARTDNS, Set.of(RuleDialect.NONE),
+            RuleType.ADBLOCK, Set.of(RuleDialect.CORE, RuleDialect.ADGUARD, RuleDialect.ABP, RuleDialect.UBO));
+
     public void validateSupported(EffectiveConfig config) {
         for (InputSpec input : config.inputs()) {
-            if (!isBasicFormat(input.type(), input.dialect())) {
-                throw new ConfigurationException("输入格式尚未实现: input=" + input.name() + ", type="
-                        + input.type().value() + ", dialect=" + input.dialect().value());
+            if (!isSupported(input.type(), input.dialect())) {
+                throw new ConfigurationException("输入格式尚未实现: " + input.name() + " --> "
+                        + input.type().value() + "/" + input.dialect().value());
             }
         }
         for (OutputSpec output : config.outputs()) {
-            if (!isBasicFormat(output.type(), output.dialect())) {
-                throw new ConfigurationException("输出格式尚未实现: path=" + output.path() + ", type="
-                        + output.type().value() + ", dialect=" + output.dialect().value());
+            if (!isSupported(output.type(), output.dialect())) {
+                throw new ConfigurationException("输出格式尚未实现: " + output.path() + " --> "
+                        + output.type().value() + "/" + output.dialect().value());
             }
         }
     }
@@ -77,12 +88,15 @@ public final class FormatRegistry {
                 OutputStream stream = new BufferedOutputStream(Files.newOutputStream(output));
                 try {
                     OutputDeduplicator deduplicator = new OutputDeduplicator(store);
+                    ConversionPolicy policy = ConversionPolicy.from(config.conversion());
                     RuleWriter writer = switch (target.type()) {
-                        case SING_BOX -> new SingBoxWriter(target, config.rules().whitelist(), deduplicator, stream);
-                        case SMARTDNS -> new SmartDnsWriter(target, config.rules().whitelist(), deduplicator, stream);
-                        case ADBLOCK -> new AdblockWriter(target, ConversionPolicy.from(config.conversion()),
+                        case SING_BOX -> new SingBoxWriter(target, policy,
                                 config.rules().whitelist(), deduplicator, stream);
-                        default -> new BasicRuleWriter(target, ConversionPolicy.from(config.conversion()),
+                        case SMARTDNS -> new SmartDnsWriter(target, policy,
+                                config.rules().whitelist(), deduplicator, stream);
+                        case ADBLOCK -> new AdblockWriter(target, policy,
+                                config.rules().whitelist(), deduplicator, stream);
+                        default -> new BasicRuleWriter(target, policy,
                                 config.rules().whitelist(), deduplicator, stream);
                     };
                     return new OutputTarget(target, writer, store, deduplicator);
@@ -99,7 +113,7 @@ public final class FormatRegistry {
                 throw exception;
             }
         } catch (IOException exception) {
-            throw new OutputException("创建目标输出失败: path=" + output, exception);
+            throw new OutputException("创建目标输出失败: " + output, exception);
         }
     }
 
@@ -116,15 +130,7 @@ public final class FormatRegistry {
         }
     }
 
-    private static boolean isBasicFormat(RuleType type, RuleDialect dialect) {
-        return switch (type) {
-            case HOSTS, DNSMASQ -> dialect == RuleDialect.NONE;
-            case DNS -> dialect == RuleDialect.ADGUARD;
-            case MIHOMO -> dialect == RuleDialect.DOMAIN || dialect == RuleDialect.IPCIDR
-                    || dialect == RuleDialect.CLASSICAL;
-            case SING_BOX, SMARTDNS -> dialect == RuleDialect.NONE;
-            case ADBLOCK -> dialect == RuleDialect.CORE || dialect == RuleDialect.ADGUARD
-                    || dialect == RuleDialect.ABP || dialect == RuleDialect.UBO;
-        };
+    private static boolean isSupported(RuleType type, RuleDialect dialect) {
+        return SUPPORTED_DIALECTS.getOrDefault(type, Set.of()).contains(dialect);
     }
 }

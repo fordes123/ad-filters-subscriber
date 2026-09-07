@@ -1,6 +1,5 @@
 package dev.fordes.adfs.config;
 
-import java.net.IDN;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
@@ -32,6 +31,8 @@ import dev.fordes.adfs.config.InputSpec.HttpSource;
 import dev.fordes.adfs.config.InputSpec.LocalSource;
 import dev.fordes.adfs.config.InputSpec.SourceLocation;
 import dev.fordes.adfs.error.ConfigurationException;
+import dev.fordes.adfs.error.RuleProcessingException;
+import dev.fordes.adfs.rule.model.DomainName;
 
 @Singleton
 @RequiredArgsConstructor
@@ -74,7 +75,7 @@ public final class ConfigValidator {
         Set<String> whitelist = normalizeDomains(rules.getWhitelist(), "rules.whitelist");
         Set<String> trueTokens = validateTrueTokens();
         validateDnsServers();
-        validateOutputDir(outputDir, workingDir, inputs);
+        validateOutputDir(outputDir, workingDir, inputs, outputs);
 
         return new EffectiveConfig(
                 outputDir,
@@ -84,8 +85,9 @@ public final class ConfigValidator {
                 new RuleConfig(rules.getMinLength(), rules.getMaxLength(), whitelist,
                         new PreprocessorConfig(preprocessor.getMaxDepth(), preprocessor.getMaxIncludeDepth(), trueTokens)),
                 new ConversionConfig(conversion.isAllowExpansion(), conversion.isAllowReduction()),
-                new DnsConfig(dns.isEnabled(), dns.getServers(), dns.getConcurrency(), dns.getTimeout(), dns.getRetries(),
-                        dns.getMaxCnameDepth(), new DnsCacheConfig(dnsCache.getMaxEntries(), dnsCache.getMaxTtl(),
+                new DnsConfig(dns.isEnabled(), dns.isStrictMode(), dns.getServers(), dns.getConcurrency(),
+                        dns.getTimeout(), dns.getRetries(), dns.getMaxCnameDepth(),
+                        new DnsCacheConfig(dnsCache.getMaxEntries(), dnsCache.getMaxTtl(),
                                 dnsCache.getMaxNegativeTtl())),
                 inputs,
                 outputs);
@@ -120,20 +122,20 @@ public final class ConfigValidator {
             try {
                 URI uri = new URI(source);
                 if (!uri.isAbsolute() || uri.getHost() == null || uri.getFragment() != null) {
-                    throw new ConfigurationException("远程输入 URI 非法: input=" + name);
+                    throw new ConfigurationException("远程输入 URI 非法: " + name);
                 }
                 return new HttpSource(uri);
             } catch (URISyntaxException exception) {
-                throw new ConfigurationException("远程输入 URI 非法: input=" + name, exception);
+                throw new ConfigurationException("远程输入 URI 非法: " + name, exception);
             }
         }
         if (URI_SCHEME.matcher(source).matches()) {
-            throw new ConfigurationException("远程输入仅支持 HTTP/HTTPS: input=" + name);
+            throw new ConfigurationException("远程输入仅支持 HTTP/HTTPS: " + name);
         }
         try {
             return new LocalSource(workingDir.resolve(source).normalize().toAbsolutePath());
         } catch (InvalidPathException exception) {
-            throw new ConfigurationException("本地输入路径非法: input=" + name, exception);
+            throw new ConfigurationException("本地输入路径非法: " + name, exception);
         }
     }
 
@@ -156,7 +158,7 @@ public final class ConfigValidator {
         try {
             relative = Path.of(properties.getName().strip()).normalize();
         } catch (InvalidPathException exception) {
-            throw new ConfigurationException("输出名称不是合法路径: index=" + properties.getIndex(), exception);
+            throw new ConfigurationException("输出名称不是合法路径: " + properties.getIndex(), exception);
         }
         if (relative.toString().isEmpty() || relative.isAbsolute() || relative.startsWith("..")) {
             throw new ConfigurationException("输出路径必须是输出目录内的文件: " + properties.getName());
@@ -194,7 +196,7 @@ public final class ConfigValidator {
             case HOSTS, DNSMASQ, SING_BOX, SMARTDNS -> dialect == RuleDialect.NONE;
         };
         if (!supported) {
-            throw new ConfigurationException("规则类型与方言不兼容: type=" + type.value() + ", dialect=" + dialect.value());
+            throw new ConfigurationException("规则类型与方言不兼容: " + type.value() + " --> " + dialect.value());
         }
         return dialect;
     }
@@ -217,7 +219,7 @@ public final class ConfigValidator {
         };
         if (!supported) {
             throw new ConfigurationException(
-                    "规则类型与容器不兼容: type=" + type.value() + ", container=" + container.value());
+                    "规则类型与容器不兼容: " + type.value() + " --> " + container.value());
         }
         return container;
     }
@@ -269,17 +271,9 @@ public final class ConfigValidator {
         Set<String> normalized = new HashSet<>();
         for (String domain : domains) {
             try {
-                if (domain == null) {
-                    throw new IllegalArgumentException("域名不得为空");
-                }
-                String value = IDN.toASCII(domain.strip().replaceFirst("\\.$", ""), IDN.USE_STD3_ASCII_RULES)
-                        .toLowerCase(Locale.ROOT);
-                if (value.isEmpty() || value.length() > 253 || value.startsWith(".") || value.endsWith(".")) {
-                    throw new IllegalArgumentException("域名长度或边界非法");
-                }
-                normalized.add(value);
-            } catch (IllegalArgumentException exception) {
-                throw new ConfigurationException(field + " 包含非法域名", exception);
+                normalized.add(new DomainName(domain).value());
+            } catch (RuleProcessingException exception) {
+                throw new ConfigurationException(field + " 包含非法域名: " + domain, exception);
             }
         }
         return Set.copyOf(normalized);
@@ -288,7 +282,7 @@ public final class ConfigValidator {
     private Set<String> validateTrueTokens() {
         Set<String> tokens = new HashSet<>();
         for (String token : preprocessor.getTrueTokens()) {
-            if (token == null || !TRUE_TOKEN.matcher(token).matches()) {
+            if (token == null || !TRUE_TOKEN.matcher(token).matches() || token.equals("false")) {
                 throw new ConfigurationException("rules.preprocessor.true-tokens 包含非法 token: " + token);
             }
             tokens.add(token);
@@ -351,7 +345,8 @@ public final class ConfigValidator {
         }
     }
 
-    private static void validateOutputDir(Path outputDir, Path workingDir, List<InputSpec> inputs) {
+    private static void validateOutputDir(
+            Path outputDir, Path workingDir, List<InputSpec> inputs, List<OutputSpec> outputs) {
         Path parent = outputDir.getParent();
         if (parent == null || !Files.isDirectory(parent) || !Files.isWritable(parent)) {
             throw new ConfigurationException("output-dir 的父目录必须存在且可写: " + outputDir);
@@ -359,19 +354,29 @@ public final class ConfigValidator {
         if (Files.isSymbolicLink(outputDir) || Files.exists(outputDir) && !Files.isDirectory(outputDir)) {
             throw new ConfigurationException("output-dir 不得是符号链接或非目录对象: " + outputDir);
         }
-        Set<Path> protectedPaths = new HashSet<>();
-        protectedPaths.add(outputDir.getRoot());
-        protectedPaths.add(workingDir);
-        protectedPaths.add(Path.of(System.getProperty("user.home")).toAbsolutePath().normalize());
-        protectedPaths.add(ProgramLocation.directory());
-        for (InputSpec input : inputs) {
-            if (input.source() instanceof LocalSource(Path path)) {
-                protectedPaths.add(path);
+        Set<Path> protectedDirectories = new HashSet<>();
+        protectedDirectories.add(outputDir.getRoot());
+        protectedDirectories.add(workingDir);
+        protectedDirectories.add(Path.of(System.getProperty("user.home")).toAbsolutePath().normalize());
+        protectedDirectories.add(ProgramLocation.directory());
+        List<Path> localInputs = inputs.stream()
+                .map(InputSpec::source)
+                .filter(LocalSource.class::isInstance)
+                .map(LocalSource.class::cast)
+                .map(LocalSource::path)
+                .toList();
+        for (OutputSpec output : outputs) {
+            Path target = outputDir.resolve(output.path()).normalize();
+            for (Path protectedDirectory : protectedDirectories) {
+                if (protectedDirectory.startsWith(target)) {
+                    throw new ConfigurationException("输出文件不得等于或包含受保护目录: " + target);
+                }
             }
-        }
-        for (Path protectedPath : protectedPaths) {
-            if (protectedPath.startsWith(outputDir)) {
-                throw new ConfigurationException("output-dir 不得等于或包含受保护路径: " + outputDir);
+            for (Path input : localInputs) {
+                if (target.startsWith(input) || input.startsWith(target)) {
+                    throw new ConfigurationException(
+                            "输出文件不得与本地输入路径冲突: " + target + " --> " + input);
+                }
             }
         }
     }

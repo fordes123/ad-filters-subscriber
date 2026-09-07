@@ -44,7 +44,8 @@ final class SourceBoundaryTest {
         try (SourceSession session = new LocalSourceReader().open(longConfig.inputs().getFirst(), longConfig);
                 BoundedLineReader reader = new BoundedLineReader(session.root(), 4)) {
             InputException exception = assertThrows(InputException.class, reader::readLine);
-            assertTrue(exception.getMessage().contains("max-line-length=4"));
+            assertTrue(exception.getMessage().contains("物理行超过字符上限"));
+            assertTrue(exception.getMessage().contains("--> 4"));
         }
     }
 

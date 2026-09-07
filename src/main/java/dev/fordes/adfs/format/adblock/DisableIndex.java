@@ -11,6 +11,7 @@ import dev.fordes.adfs.rule.model.AdblockModifier;
 import dev.fordes.adfs.rule.model.AdblockNetworkRule;
 import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.RuleEntry;
+import dev.fordes.adfs.rule.model.SafariRule;
 import dev.fordes.adfs.rule.normalize.CanonicalRuleEncoder;
 
 public final class DisableIndex implements AutoCloseable {
@@ -29,6 +30,9 @@ public final class DisableIndex implements AutoCloseable {
     }
 
     public boolean isDisabled(RuleEntry rule) {
+        if (rule instanceof SafariRule safari) {
+            return isDisabled(safari.rule());
+        }
         if (!(rule instanceof AdblockNetworkRule)
                 && !(rule instanceof OpaqueRule opaque && opaque.type() == RuleType.ADBLOCK)) {
             return false;
@@ -38,6 +42,9 @@ public final class DisableIndex implements AutoCloseable {
     }
 
     public boolean isControl(RuleEntry entry) {
+        if (entry instanceof SafariRule safari) {
+            return isControl(safari.rule());
+        }
         if (entry instanceof AdblockNetworkRule rule) {
             return rule.isBadfilter();
         }
@@ -46,6 +53,9 @@ public final class DisableIndex implements AutoCloseable {
     }
 
     private byte[] key(RuleEntry entry) {
+        if (entry instanceof SafariRule safari) {
+            return key(safari.rule());
+        }
         if (entry instanceof OpaqueRule opaque) {
             List<String> options = AdblockSyntax.networkOptions(opaque.payload());
             int separator = options.isEmpty() ? -1 : AdblockSyntax.optionSeparator(opaque.payload());

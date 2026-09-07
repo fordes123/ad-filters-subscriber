@@ -5,4 +5,4 @@ micronaut:
 
 logger:
   levels:
-    dev.fordes.adfs: DEBUG
+    dev.fordes.adfs: INFO

@@ -15,7 +15,7 @@ import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.error.OutputException;
 import dev.fordes.adfs.publish.StagingWorkspace.Workspace;
 
-/** 在正文关闭后合成文件头；所有操作只发生在本次临时工作区。 */
+/** 在正文关闭后合成文件头; 所有操作只发生在本次临时工作区。 */
 public final class OutputHeader {
 
     private OutputHeader() {
@@ -28,7 +28,7 @@ public final class OutputHeader {
         String prefix = switch (spec.type()) {
             case ADBLOCK, DNS -> "! ";
             case HOSTS, DNSMASQ, SMARTDNS, MIHOMO -> "# ";
-            case SING_BOX -> throw new OutputException("JSON 输出不支持文件头: path=" + spec.path());
+            case SING_BOX -> throw new OutputException("JSON 输出不支持文件头: " + spec.path());
         };
         String header = FileHeaderTemplate.render(spec, generatedAt, total).lines()
                 .map(line -> prefix + line)
@@ -42,7 +42,7 @@ public final class OutputHeader {
             }
             Files.move(combined, body, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException exception) {
-            throw new OutputException("合成文件头失败: path=" + body + ": " + exception.getMessage(), exception);
+            throw new OutputException("合成文件头失败: " + body + " --> " + exception.getMessage(), exception);
         }
     }
 }

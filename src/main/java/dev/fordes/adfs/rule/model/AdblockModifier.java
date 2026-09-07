@@ -8,7 +8,7 @@ public record AdblockModifier(Type type, String value) {
         value = value == null ? "" : value;
         if (type.requiresValue() && value.isEmpty()
                 || type == Type.BADFILTER && !value.isEmpty()) {
-            throw new RuleProcessingException("Adblock 修饰符参数不符合要求: type=" + type.value());
+            throw new RuleProcessingException("Adblock 修饰符参数不符合要求: " + type.value());
         }
     }
 

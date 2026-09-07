@@ -2,7 +2,6 @@ package dev.fordes.adfs.format;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.io.TempDir;
 import dev.fordes.adfs.config.EffectiveConfig.InputLimits;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
-import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.dns.DnsParser;
 import dev.fordes.adfs.format.dnsmasq.DnsmasqParser;
 import dev.fordes.adfs.format.hosts.HostsParser;
@@ -25,6 +23,7 @@ import dev.fordes.adfs.format.mihomo.MihomoIpCidrParser;
 import dev.fordes.adfs.format.singbox.SingBoxParser;
 import dev.fordes.adfs.format.smartdns.SmartDnsParser;
 import dev.fordes.adfs.rule.model.DomainRule;
+import dev.fordes.adfs.rule.model.DnsAddressRule;
 import dev.fordes.adfs.rule.model.HostMappingRule;
 import dev.fordes.adfs.rule.model.IpCidrRule;
 import dev.fordes.adfs.rule.model.OpaqueRule;
@@ -32,6 +31,7 @@ import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.RuleEntry;
 import dev.fordes.adfs.testing.ParserTestSupport;
+import dev.fordes.adfs.testing.ParserTestSupport.ParseOutcome;
 import dev.fordes.adfs.testing.TestConfigs;
 
 final class ParserContractTest {
@@ -74,8 +74,8 @@ final class ParserContractTest {
                 new DnsmasqParser(LIMITS, TestConfigs.rules()), RuleType.DNSMASQ, RuleDialect.NONE);
 
         assertEquals(3, entries.size());
-        assertInstanceOf(DomainRule.class, entries.get(0));
-        assertInstanceOf(DomainRule.class, entries.get(1));
+        assertInstanceOf(DnsAddressRule.class, entries.get(0));
+        assertInstanceOf(DnsAddressRule.class, entries.get(1));
         assertInstanceOf(OpaqueRule.class, entries.get(2));
     }
 
@@ -128,23 +128,21 @@ final class ParserContractTest {
                         + "nameserver /route.example/private\n",
                 new SmartDnsParser(LIMITS, TestConfigs.rules()), RuleType.SMARTDNS, RuleDialect.NONE);
 
-        assertEquals(5, entries.size());
-        assertInstanceOf(HostMappingRule.class, entries.get(0));
-        assertInstanceOf(HostMappingRule.class, entries.get(1));
-        assertInstanceOf(DomainRule.class, entries.get(2));
+        assertEquals(4, entries.size());
+        assertEquals(2, assertInstanceOf(DnsAddressRule.class, entries.get(0)).addresses().size());
+        assertInstanceOf(DnsAddressRule.class, entries.get(1));
+        assertInstanceOf(DnsAddressRule.class, entries.get(2));
         assertInstanceOf(OpaqueRule.class, entries.get(3));
-        assertInstanceOf(OpaqueRule.class, entries.get(4));
     }
 
     @Test
-    void includesSourceAndLineInTextSyntaxErrors() {
-        RuleProcessingException exception = assertThrows(RuleProcessingException.class,
-                () -> ParserTestSupport.parse(
-                        temporaryDirectory.resolve("broken.conf"), "listen-address 0.0.0.0\n",
-                        new DnsmasqParser(LIMITS, TestConfigs.rules()), RuleType.DNSMASQ, RuleDialect.NONE));
+    void skipsAndCountsInvalidTextRules() throws IOException {
+        ParseOutcome outcome = ParserTestSupport.parseOutcome(
+                temporaryDirectory.resolve("broken.conf"), "listen-address 0.0.0.0\n",
+                new DnsmasqParser(LIMITS, TestConfigs.rules()), RuleType.DNSMASQ, RuleDialect.NONE);
 
-        assertTrue(exception.getMessage().contains("broken.conf"));
-        assertTrue(exception.getMessage().contains("line=1"));
+        assertTrue(outcome.entries().isEmpty());
+        assertEquals(1, outcome.metrics().invalidRules());
     }
 
     @Test
@@ -153,9 +151,11 @@ final class ParserContractTest {
                 "IP-CIDR,192.0.2.0/24,no-resolve\nPROCESS-NAME,\"a\"\"b,c\"\n",
                 new MihomoClassicalParser(LIMITS, TestConfigs.rules()), RuleType.MIHOMO, RuleDialect.CLASSICAL);
         assertEquals("IP-CIDR,192.0.2.0/24,no-resolve", assertInstanceOf(OpaqueRule.class, entries.getFirst()).payload());
-        assertThrows(RuleProcessingException.class, () -> ParserTestSupport.parse(
+        ParseOutcome invalid = ParserTestSupport.parseOutcome(
                 temporaryDirectory.resolve("tail.txt"), "DOMAIN,ads.example,unexpected\n",
-                new MihomoClassicalParser(LIMITS, TestConfigs.rules()), RuleType.MIHOMO, RuleDialect.CLASSICAL));
+                new MihomoClassicalParser(LIMITS, TestConfigs.rules()), RuleType.MIHOMO, RuleDialect.CLASSICAL);
+        assertTrue(invalid.entries().isEmpty());
+        assertEquals(1, invalid.metrics().invalidRules());
     }
 
     @Test
@@ -163,6 +163,6 @@ final class ParserContractTest {
         List<RuleEntry> entries = ParserTestSupport.parse(temporaryDirectory.resolve("hyphen.conf"),
                 "address /ad-server.example/#\n",
                 new SmartDnsParser(LIMITS, TestConfigs.rules()), RuleType.SMARTDNS, RuleDialect.NONE);
-        assertEquals("ad-server.example", assertInstanceOf(DomainRule.class, entries.getFirst()).pattern().value());
+        assertEquals("ad-server.example", assertInstanceOf(DnsAddressRule.class, entries.getFirst()).pattern().value());
     }
 }

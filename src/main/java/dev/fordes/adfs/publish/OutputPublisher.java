@@ -31,34 +31,34 @@ public final class OutputPublisher {
                     Files.move(workspace.nextDir().resolve(entry.path()), target,
                             StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                 } catch (IOException exception) {
-                    throw new OutputException("原子替换输出文件失败，已发布文件保留新版本: path=" + target,
+                    throw new OutputException("原子替换输出文件失败, 已发布文件保留新版本: " + target,
                             exception);
                 }
             }
         } catch (OutputException exception) {
             throw exception;
         } catch (IOException exception) {
-            throw new OutputException("准备输出文件发布失败: output-dir=" + workspace.outputDir(), exception);
+            throw new OutputException("准备输出文件发布失败: " + workspace.outputDir(), exception);
         }
     }
 
     private static void validateTarget(Path outputDir, Path relative) throws IOException {
         Path target = outputDir.resolve(relative).normalize();
         if (relative.isAbsolute() || target.equals(outputDir) || !target.startsWith(outputDir)) {
-            throw new OutputException("输出文件路径越界: path=" + relative);
+            throw new OutputException("输出文件路径越界: " + relative);
         }
         for (Path current = target; current.startsWith(outputDir); current = current.getParent()) {
             if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
                 continue;
             }
             if (Files.isSymbolicLink(current) || !current.toRealPath().equals(current)) {
-                throw new OutputException("输出路径不得经过符号链接或目录联接: path=" + current);
+                throw new OutputException("输出路径不得经过符号链接或目录联接: " + current);
             }
             boolean valid = current.equals(target)
                     ? Files.isRegularFile(current, LinkOption.NOFOLLOW_LINKS)
                     : Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS);
             if (!valid) {
-                throw new OutputException("输出路径存在文件与目录冲突: path=" + current);
+                throw new OutputException("输出路径存在文件与目录冲突: " + current);
             }
         }
     }

@@ -7,6 +7,4 @@ public interface DnsResolver {
     DnsResult resolve(DomainName domain);
 
     int cacheSize();
-
-    long retries();
 }

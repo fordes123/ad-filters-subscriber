@@ -72,7 +72,7 @@ final class HttpSourceReaderTest {
         InputException exception = assertThrows(InputException.class,
                 () -> new HttpSourceReader().open(config.inputs().getFirst(), config));
 
-        assertTrue(exception.getMessage().contains("status=503"));
+        assertTrue(exception.getMessage().contains("HTTP 503"));
         assertTrue(exception.getMessage().contains("temporarily unavailable"));
     }
 

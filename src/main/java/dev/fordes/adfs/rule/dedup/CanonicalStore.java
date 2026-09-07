@@ -23,7 +23,7 @@ public final class CanonicalStore implements AutoCloseable {
             channel = FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.READ,
                     StandardOpenOption.WRITE);
         } catch (IOException exception) {
-            throw new OutputException("创建规范存储失败: path=" + path, exception);
+            throw new OutputException("创建规范存储失败: " + path, exception);
         }
     }
 
@@ -43,7 +43,7 @@ public final class CanonicalStore implements AutoCloseable {
             }
             return new CanonicalLocator(offset + Integer.BYTES, value.length);
         } catch (IOException exception) {
-            throw new OutputException("追加规范存储失败: path=" + path, exception);
+            throw new OutputException("追加规范存储失败: " + path, exception);
         }
     }
 
@@ -72,7 +72,7 @@ public final class CanonicalStore implements AutoCloseable {
             }
             return true;
         } catch (IOException exception) {
-            throw new OutputException("读取规范存储失败: path=" + path, exception);
+            throw new OutputException("读取规范存储失败: " + path, exception);
         }
     }
 
@@ -96,7 +96,7 @@ public final class CanonicalStore implements AutoCloseable {
         try (channel) {
             flush();
         } catch (IOException exception) {
-            throw new OutputException("关闭规范存储失败: path=" + path, exception);
+            throw new OutputException("关闭规范存储失败: " + path, exception);
         }
     }
 }

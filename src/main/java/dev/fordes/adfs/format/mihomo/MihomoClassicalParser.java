@@ -10,6 +10,7 @@ import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.RuleConsumer;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleParser;
 import dev.fordes.adfs.format.TextSource;
 import dev.fordes.adfs.rule.model.DomainEnvelope;
@@ -25,9 +26,11 @@ import dev.fordes.adfs.rule.model.NetworkMatch;
 import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.PortMatch;
 import dev.fordes.adfs.rule.model.ProcessMatch;
+import dev.fordes.adfs.rule.model.RegexDomain;
 import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.model.RuleAction;
 import dev.fordes.adfs.rule.model.SuffixDomain;
+import dev.fordes.adfs.rule.model.WildcardSyntax;
 import dev.fordes.adfs.rule.model.WildcardDomain;
 import dev.fordes.adfs.source.SourceLine;
 import dev.fordes.adfs.source.SourceSession;
@@ -36,8 +39,7 @@ public final class MihomoClassicalParser implements RuleParser {
 
     private final InputLimits limits;
     private final RuleConfig rules;
-    private boolean yaml;
-    private boolean decided;
+    private final MihomoYaml container = new MihomoYaml();
 
     public MihomoClassicalParser(InputLimits limits, RuleConfig rules) {
         this.limits = limits;
@@ -45,27 +47,31 @@ public final class MihomoClassicalParser implements RuleParser {
     }
 
     @Override
-    public void parse(SourceSession session, RuleConsumer consumer) {
-        TextSource.read(session, limits, line -> parseLine(line, consumer));
+    public ParseResult parse(SourceSession session, RuleConsumer consumer) {
+        TextSource.read(session, limits, text -> text.startsWith("#"), line -> parseLine(line, consumer));
+        return ParseResult.COMPLETE;
     }
 
     private void parseLine(SourceLine line, RuleConsumer consumer) {
-        String text = line.text().strip();
-        if (text.isEmpty() || text.startsWith("#")) {
+        String text = container.read(line);
+        if (text == null) {
             return;
-        }
-        if (!decided) {
-            decided = true;
-            yaml = text.equals("payload:");
-            if (yaml) {
-                return;
-            }
-        }
-        if (yaml) {
-            text = yamlScalar(text, line);
         }
         text = TextSource.ruleText(new SourceLine(line.source(), line.lineNumber(), text),
                 rules.minLength(), rules.maxLength());
+        int separator = text.indexOf(',');
+        if (separator < 0) {
+            throw syntax(line, "Mihomo classical 至少需要类型和参数");
+        }
+        String leadingType = text.substring(0, separator).strip().toUpperCase(Locale.ROOT);
+        if (leadingType.equals("DOMAIN-REGEX")) {
+            String expression = text.substring(separator + 1).strip();
+            if (expression.isEmpty()) {
+                throw syntax(line, "Mihomo DOMAIN-REGEX 表达式不得为空");
+            }
+            consumer.accept(new DomainRule(new RegexDomain(expression), RuleAction.BLOCK));
+            return;
+        }
         List<String> fields = csv(text, line);
         if (fields.size() < 2) {
             throw syntax(line, "Mihomo classical 至少需要类型和参数");
@@ -89,7 +95,7 @@ public final class MihomoClassicalParser implements RuleParser {
             case "DOMAIN-SUFFIX" -> consumer.accept(
                     new DomainRule(new SuffixDomain(new DomainName(parameter)), RuleAction.BLOCK));
             case "DOMAIN-KEYWORD" -> consumer.accept(new DomainRule(new KeywordDomain(parameter), RuleAction.BLOCK));
-            case "DOMAIN-WILDCARD" -> consumer.accept(new DomainRule(new WildcardDomain(parameter), RuleAction.BLOCK));
+            case "DOMAIN-WILDCARD" -> consumer.accept(new DomainRule(new WildcardDomain(parameter, WildcardSyntax.MIHOMO_CLASSICAL), RuleAction.BLOCK));
             case "IP-CIDR", "IP-CIDR6" -> {
                 IpCidr cidr = IpCidr.parse(parameter);
                 consumer.accept(new IpCidrRule(cidr.network(), cidr.prefixLength(), RuleAction.BLOCK));
@@ -111,19 +117,6 @@ public final class MihomoClassicalParser implements RuleParser {
         }
     }
 
-    private static String yamlScalar(String text, SourceLine line) {
-        if (!text.startsWith("-")) {
-            throw syntax(line, "Mihomo YAML payload 只接受序列项");
-        }
-        String scalar = text.substring(1).strip();
-        if (scalar.length() >= 2 && scalar.startsWith("'") && scalar.endsWith("'")) {
-            return scalar.substring(1, scalar.length() - 1).replace("''", "'");
-        }
-        if (scalar.length() >= 2 && scalar.startsWith("\"") && scalar.endsWith("\"")) {
-            return scalar.substring(1, scalar.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
-        }
-        return scalar;
-    }
 
     private static List<String> csv(String text, SourceLine line) {
         List<String> fields = new ArrayList<>();
@@ -159,8 +152,7 @@ public final class MihomoClassicalParser implements RuleParser {
             int last = Integer.parseInt(separator < 0 ? value : value.substring(separator + 1));
             return new PortMatch(side, first, last);
         } catch (IllegalArgumentException exception) {
-            throw new RuleProcessingException("Mihomo 端口范围非法: source=" + line.source()
-                    + ", line=" + line.lineNumber() + ", value=" + value, exception);
+            throw new RuleProcessingException("Mihomo 端口范围非法: " + value, exception);
         }
     }
 
@@ -173,6 +165,6 @@ public final class MihomoClassicalParser implements RuleParser {
     }
 
     private static RuleProcessingException syntax(SourceLine line, String message) {
-        return new RuleProcessingException(message + ": source=" + line.source() + ", line=" + line.lineNumber());
+        return new RuleProcessingException(message);
     }
 }

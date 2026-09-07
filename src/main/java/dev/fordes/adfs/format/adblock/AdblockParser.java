@@ -7,6 +7,7 @@ import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.format.RuleParser;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.TextSource;
 import dev.fordes.adfs.rule.model.*;
 import dev.fordes.adfs.rule.spool.RuleSpool;
@@ -20,8 +21,6 @@ import java.util.*;
 @Slf4j
 public final class AdblockParser implements RuleParser {
 
-    private static final List<String> COSMETIC_OPERATORS = List.of(
-            "#@$?#", "#$?#", "#@?#", "#@%#", "#@$#", "#@#", "#?#", "#%#", "#$#", "$@$", "##", "$$");
     private final InputLimits limits;
     private final RuleConfig rules;
     private final AdblockDialectDefinition dialect;
@@ -33,22 +32,29 @@ public final class AdblockParser implements RuleParser {
     }
 
     @Override
-    public void parse(SourceSession session, RuleConsumer consumer) {
+    public ParseResult parse(SourceSession session, RuleConsumer consumer) {
         AdblockPreprocessor preprocessor = new AdblockPreprocessor(
                 limits, rules.preprocessor(), dialect.builtInTokens());
-        preprocessor.process(session, line -> {
+        preprocessor.process(session, (line, affinity) -> {
             try {
                 if (log.isDebugEnabled()) {
                     MDC.put(RuleSpool.INPUT_RULE, line.text());
                 }
-                parseLine(line, consumer);
+                parseLine(line, entry -> consumer.accept(affinity.isEmpty() ? entry : new SafariRule(entry, affinity)));
             } catch (RuleProcessingException | IllegalArgumentException exception) {
-                log.debug("规则解析失败:  {} | {} --> {}",
+                session.invalidRule();
+                log.warn("Adblock 规则语法非法, 已跳过:  {} --> Adblock 解析 | {} --> {}",
                         MDC.get(RuleSpool.INPUT), line.text(), exception.getMessage());
-                throw new RuleProcessingException("解析 Adblock 规则失败: source=" + line.source()
-                        + ", line=" + line.lineNumber() + ", reason=" + exception.getMessage(), exception);
             }
         });
+        return ParseResult.COMPLETE;
+    }
+
+    static boolean isComment(String text) {
+        String stripped = text.strip();
+        AdblockSyntax.CosmeticLocation operator = AdblockSyntax.cosmeticOperator(stripped);
+        return stripped.startsWith("!") || stripped.startsWith("[Adblock")
+                || stripped.startsWith("#") && (operator == null || operator.index() != 0);
     }
 
     private void parseLine(SourceLine line, RuleConsumer consumer) {
@@ -56,8 +62,11 @@ public final class AdblockParser implements RuleParser {
         if (stripped.isEmpty() || stripped.startsWith("!") || stripped.startsWith("[Adblock")) {
             return;
         }
+        AdblockSyntax.CosmeticLocation cosmetic = AdblockSyntax.cosmeticOperator(stripped);
+        if (stripped.startsWith("#") && (cosmetic == null || cosmetic.index() != 0)) {
+            return;
+        }
         String text = TextSource.ruleText(line, rules.minLength(), rules.maxLength());
-        OperatorLocation cosmetic = text.startsWith("/") || text.startsWith("@@/") ? null : findCosmetic(text);
         if (cosmetic != null) {
             parseCosmetic(text, cosmetic, line, consumer);
         } else {
@@ -65,7 +74,8 @@ public final class AdblockParser implements RuleParser {
         }
     }
 
-    private void parseCosmetic(String text, OperatorLocation location, SourceLine line, RuleConsumer consumer) {
+    private void parseCosmetic(
+            String text, AdblockSyntax.CosmeticLocation location, SourceLine line, RuleConsumer consumer) {
         AdblockCapability capability = dialect.cosmetic(location.operator());
         if (capability == AdblockCapability.INVALID) {
             throw failure(line, "当前 Adblock 方言不支持元素操作符: " + location.operator());
@@ -83,6 +93,13 @@ public final class AdblockParser implements RuleParser {
             return;
         }
         if (domainText.indexOf('*') >= 0) {
+            if (dialect.dialect() == RuleDialect.CORE) {
+                throw failure(line, "当前 Adblock 方言不支持元素规则域名通配符");
+            }
+            consumer.accept(opaque(text, DomainEnvelope.UNKNOWN));
+            return;
+        }
+        if (domainText.indexOf('/') >= 0 && dialect.dialect() == RuleDialect.UBO) {
             consumer.accept(opaque(text, DomainEnvelope.UNKNOWN));
             return;
         }
@@ -102,7 +119,7 @@ public final class AdblockParser implements RuleParser {
                 || operator == CosmeticOperator.CSS_INJECTION_EXCEPTION
                 || operator == CosmeticOperator.EXTENDED_CSS_INJECTION_EXCEPTION
                 || operator == CosmeticOperator.HTML_FILTER_EXCEPTION;
-        consumer.accept(new CosmeticRule(domains, exception, operator, body));
+        consumer.accept(new CosmeticRule(domains, exception, operator, body, dialect.dialect()));
     }
 
     private void parseNetwork(String text, SourceLine line, RuleConsumer consumer) {
@@ -151,7 +168,7 @@ public final class AdblockParser implements RuleParser {
             int equals = positive.indexOf('=');
             String name = (equals < 0 ? positive : positive.substring(0, equals)).toLowerCase(Locale.ROOT);
             String value = equals < 0 ? "" : positive.substring(equals + 1);
-            name = name.equals("xhr") ? "xmlhttprequest" : name;
+            name = canonicalOptionName(name);
             AdblockCapability capability = dialect.option(name);
             if (capability == AdblockCapability.INVALID) {
                 throw failure(line, "当前 Adblock 方言不支持选项: " + name);
@@ -166,12 +183,25 @@ public final class AdblockParser implements RuleParser {
             AdblockResourceType resource = resourceType(name);
             if (resource != null) {
                 requireNoValue(value, line, name);
+                if ((resource == AdblockResourceType.ELEMHIDE
+                        || resource == AdblockResourceType.GENERICHIDE
+                        || resource == AdblockResourceType.GENERICBLOCK
+                        || resource == AdblockResourceType.SPECIFICHIDE)
+                        && action != RuleAction.ALLOW) {
+                    throw failure(line, "Adblock 页面级隐藏例外选项只能用于例外规则: " + name);
+                }
                 (negated ? excluded : included).add(resource);
             } else if (name.equals("domain")) {
                 if (negated || value.isEmpty()) {
                     throw failure(line, "Adblock domain 选项需要非空参数且不能整体否定");
                 }
                 if (value.indexOf('*') >= 0) {
+                    if (dialect.dialect() != RuleDialect.ADGUARD && dialect.dialect() != RuleDialect.UBO) {
+                        throw failure(line, "当前 Adblock 方言不支持 domain 选项中的扩展域名模式");
+                    }
+                    passthrough = true;
+                } else if (value.indexOf('/') >= 0
+                        && (dialect.dialect() == RuleDialect.ADGUARD || dialect.dialect() == RuleDialect.UBO)) {
                     passthrough = true;
                 } else {
                     domains.addAll(parseDomainConstraints(value, '|', line));
@@ -209,7 +239,7 @@ public final class AdblockParser implements RuleParser {
         return new ParsedOptions(included, excluded, domains, party, matchCase, important, modifiers, passthrough);
     }
 
-    private static AdblockPattern parsePattern(String body, SourceLine line) {
+    private AdblockPattern parsePattern(String body, SourceLine line) {
         if (body.startsWith("/") && body.endsWith("/") && body.length() > 2) {
             return new AdblockPattern(AdblockPattern.Kind.REGEX, body.substring(1, body.length() - 1));
         }
@@ -218,7 +248,15 @@ public final class AdblockParser implements RuleParser {
             if (domain.indexOf('*') >= 0 || domain.indexOf('/') >= 0 || domain.indexOf('^') >= 0) {
                 return new AdblockPattern(AdblockPattern.Kind.URL, body);
             }
-            return new AdblockPattern(AdblockPattern.Kind.DOMAIN_ANCHOR, new DomainName(domain).value());
+            return DomainName.tryParse(domain)
+                    .map(value -> new AdblockPattern(AdblockPattern.Kind.DOMAIN_ANCHOR, value.value()))
+                    .orElseGet(() -> new AdblockPattern(AdblockPattern.Kind.URL, body));
+        }
+        if (dialect.dialect() == RuleDialect.UBO) {
+            Optional<DomainName> hostname = DomainName.tryParse(body);
+            if (hostname.isPresent()) {
+                return new AdblockPattern(AdblockPattern.Kind.DOMAIN_ANCHOR, hostname.orElseThrow().value());
+            }
         }
         return new AdblockPattern(AdblockPattern.Kind.URL, body);
     }
@@ -242,45 +280,6 @@ public final class AdblockParser implements RuleParser {
             domains.add(new DomainConstraint(new DomainName(domain), excluded));
         }
         return List.copyOf(domains);
-    }
-
-    private static OperatorLocation findCosmetic(String text) {
-        boolean escaped = false;
-        char quote = 0;
-        int depth = 0;
-        for (int index = 0; index < text.length(); index++) {
-            char character = text.charAt(index);
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-            if (character == '\\') {
-                escaped = true;
-                continue;
-            }
-            if (quote != 0) {
-                if (character == quote) {
-                    quote = 0;
-                }
-                continue;
-            }
-            if (character == '\'' || character == '"') {
-                quote = character;
-                continue;
-            }
-            if (character == '(') {
-                depth++;
-            } else if (character == ')' && depth > 0) {
-                depth--;
-            } else if (depth == 0) {
-                for (String operator : COSMETIC_OPERATORS) {
-                    if (text.startsWith(operator, index)) {
-                        return new OperatorLocation(index, operator);
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     private static List<String> splitStructured(String text, char separator, SourceLine line) {
@@ -356,6 +355,28 @@ public final class AdblockParser implements RuleParser {
         return null;
     }
 
+    private String canonicalOptionName(String name) {
+        if (name.equals("xhr")
+                && (dialect.dialect() == RuleDialect.ADGUARD || dialect.dialect() == RuleDialect.UBO)) {
+            return "xmlhttprequest";
+        }
+        if (dialect.dialect() != RuleDialect.UBO) {
+            return name;
+        }
+        return switch (name) {
+            case "1p" -> "first-party";
+            case "3p" -> "third-party";
+            case "css" -> "stylesheet";
+            case "doc" -> "document";
+            case "ehide" -> "elemhide";
+            case "frame" -> "subdocument";
+            case "from" -> "domain";
+            case "ghide" -> "generichide";
+            case "shide" -> "specifichide";
+            default -> name;
+        };
+    }
+
     private static AdblockModifier.Type modifierType(String value, SourceLine line) {
         for (AdblockModifier.Type type : AdblockModifier.Type.values()) {
             if (type.value().equals(value)) {
@@ -387,10 +408,7 @@ public final class AdblockParser implements RuleParser {
     }
 
     private static RuleProcessingException failure(SourceLine line, String message) {
-        return new RuleProcessingException(message + ": source=" + line.source() + ", line=" + line.lineNumber());
-    }
-
-    private record OperatorLocation(int index, String operator) {
+        return new RuleProcessingException(message);
     }
 
     private record ParsedOptions(

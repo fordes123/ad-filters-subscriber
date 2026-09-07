@@ -2,7 +2,6 @@ package dev.fordes.adfs.format.adblock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -16,7 +15,6 @@ import org.junit.jupiter.api.io.TempDir;
 import dev.fordes.adfs.config.EffectiveConfig.InputLimits;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
-import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.rule.model.AdblockNetworkRule;
 import dev.fordes.adfs.rule.model.AdblockPattern;
 import dev.fordes.adfs.rule.model.AdblockResourceType;
@@ -25,6 +23,7 @@ import dev.fordes.adfs.rule.model.OpaqueRule;
 import dev.fordes.adfs.rule.model.PartyConstraint;
 import dev.fordes.adfs.rule.model.RuleEntry;
 import dev.fordes.adfs.testing.ParserTestSupport;
+import dev.fordes.adfs.testing.ParserTestSupport.ParseOutcome;
 import dev.fordes.adfs.testing.TestConfigs;
 
 final class AdblockParserTest {
@@ -67,37 +66,41 @@ final class AdblockParserTest {
     }
 
     @Test
-    void rejectsDialectSpecificOperatorInAbp() {
-        RuleProcessingException exception = assertThrows(RuleProcessingException.class,
-                () -> ParserTestSupport.parse(
-                        temporaryDirectory.resolve("abp.txt"), "example.com#?#.sponsored\n",
-                        new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ABP),
-                        RuleType.ADBLOCK, RuleDialect.ABP));
+    void acceptsAbpExtendedCssOperator() throws IOException {
+        List<RuleEntry> entries = ParserTestSupport.parse(
+                temporaryDirectory.resolve("abp.txt"), "example.com#?#.sponsored\n",
+                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ABP),
+                RuleType.ADBLOCK, RuleDialect.ABP);
 
-        assertTrue(exception.getMessage().contains("不支持元素操作符"));
+        CosmeticRule rule = assertInstanceOf(CosmeticRule.class, entries.getFirst());
+        assertEquals("#?#", rule.operator().value());
+        assertEquals(RuleDialect.ABP, rule.dialect());
     }
 
     @Test
-    void rejectsIncludeCycles() throws IOException {
+    void skipsAndCountsIncludeCycles() throws IOException {
         Files.writeString(temporaryDirectory.resolve("child.txt"), "!#include root.txt\n");
 
-        RuleProcessingException exception = assertThrows(RuleProcessingException.class,
-                () -> ParserTestSupport.parse(
-                        temporaryDirectory.resolve("root.txt"), "!#include child.txt\n",
-                        new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ADGUARD),
-                        RuleType.ADBLOCK, RuleDialect.ADGUARD));
+        ParseOutcome outcome = ParserTestSupport.parseOutcome(
+                temporaryDirectory.resolve("root.txt"), "!#include child.txt\n",
+                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ADGUARD),
+                RuleType.ADBLOCK, RuleDialect.ADGUARD);
 
-        assertTrue(exception.getMessage().contains("include 形成循环"));
+        assertTrue(outcome.entries().isEmpty());
+        assertEquals(1, outcome.metrics().invalidRules());
     }
 
     @Test
-    void validatesOptionsBeforePassthroughAndPreservesRegexDelimiters() throws IOException {
-        assertThrows(RuleProcessingException.class, () -> ParserTestSupport.parse(
+    void skipsInvalidOptionsAndPreservesRegexDelimiters() throws IOException {
+        ParseOutcome invalidAbp = ParserTestSupport.parseOutcome(
                 temporaryDirectory.resolve("invalid-abp.txt"), "||ads.example^$replace=/a/b/\n",
-                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ABP), RuleType.ADBLOCK, RuleDialect.ABP));
-        assertThrows(RuleProcessingException.class, () -> ParserTestSupport.parse(
+                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ABP), RuleType.ADBLOCK, RuleDialect.ABP);
+        ParseOutcome invalidOption = ParserTestSupport.parseOutcome(
                 temporaryDirectory.resolve("invalid-option.txt"), "||ads.example^$script=invalid\n",
-                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ADGUARD), RuleType.ADBLOCK, RuleDialect.ADGUARD));
+                new AdblockParser(LIMITS, TestConfigs.rules(), RuleDialect.ADGUARD),
+                RuleType.ADBLOCK, RuleDialect.ADGUARD);
+        assertEquals(1, invalidAbp.metrics().invalidRules());
+        assertEquals(1, invalidOption.metrics().invalidRules());
         List<RuleEntry> entries = ParserTestSupport.parse(temporaryDirectory.resolve("delimiters.txt"),
                 "/foo##bar$/\n||ads.example^$domain=redirect.example,script\n"
                         + "||rewrite.example^$replace=/a\\,b/c\\,d/,important\n",
