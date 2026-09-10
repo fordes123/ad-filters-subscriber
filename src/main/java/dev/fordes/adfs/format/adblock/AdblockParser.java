@@ -5,9 +5,9 @@ import dev.fordes.adfs.config.EffectiveConfig.RuleConfig;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.format.RuleParser;
-import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.TextSource;
 import dev.fordes.adfs.rule.model.*;
 import dev.fordes.adfs.rule.spool.RuleSpool;
@@ -24,6 +24,7 @@ public final class AdblockParser implements RuleParser {
     private final InputLimits limits;
     private final RuleConfig rules;
     private final AdblockDialectDefinition dialect;
+
 
     public AdblockParser(InputLimits limits, RuleConfig rules, RuleDialect dialect) {
         this.limits = limits;

@@ -5,24 +5,18 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
+import dev.fordes.adfs.format.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
 import jakarta.inject.Singleton;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import dev.fordes.adfs.config.EffectiveConfig;
 import dev.fordes.adfs.config.InputSpec;
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.error.InputException;
-import dev.fordes.adfs.format.FormatRegistry;
-import dev.fordes.adfs.format.OutputSet;
-import dev.fordes.adfs.format.OutputTarget;
-import dev.fordes.adfs.format.ParseResult;
-import dev.fordes.adfs.format.RuleParser;
-import dev.fordes.adfs.format.WriteResult;
 import dev.fordes.adfs.format.adblock.DisableIndex;
 import dev.fordes.adfs.publish.OutputPublisher;
 import dev.fordes.adfs.publish.OutputHeader;

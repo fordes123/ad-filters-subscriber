@@ -1,16 +1,16 @@
 package dev.fordes.adfs.report;
 
+import dev.fordes.adfs.application.ProcessingResult;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.Locale;
 import java.util.Map;
-
-import jakarta.inject.Singleton;
-
-import dev.fordes.adfs.application.ProcessingResult;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
 public final class RunReporter {
+
 
     public void report(ProcessingResult result) {
         long inputLines = 0;

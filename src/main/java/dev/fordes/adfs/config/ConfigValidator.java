@@ -1,38 +1,22 @@
 package dev.fordes.adfs.config;
 
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.UnknownHostException;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.regex.Pattern;
-
-import jakarta.inject.Singleton;
-
-import lombok.RequiredArgsConstructor;
-
-import dev.fordes.adfs.config.EffectiveConfig.ConversionConfig;
-import dev.fordes.adfs.config.EffectiveConfig.DnsCacheConfig;
-import dev.fordes.adfs.config.EffectiveConfig.DnsConfig;
-import dev.fordes.adfs.config.EffectiveConfig.HttpConfig;
-import dev.fordes.adfs.config.EffectiveConfig.InputLimits;
-import dev.fordes.adfs.config.EffectiveConfig.PreprocessorConfig;
-import dev.fordes.adfs.config.EffectiveConfig.RuleConfig;
+import dev.fordes.adfs.config.EffectiveConfig.*;
 import dev.fordes.adfs.config.InputSpec.HttpSource;
 import dev.fordes.adfs.config.InputSpec.LocalSource;
 import dev.fordes.adfs.config.InputSpec.SourceLocation;
 import dev.fordes.adfs.error.ConfigurationException;
 import dev.fordes.adfs.error.RuleProcessingException;
 import dev.fordes.adfs.rule.model.DomainName;
+import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
+
+import java.net.*;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.*;
+import java.util.regex.Pattern;
 
 @Singleton
 @RequiredArgsConstructor

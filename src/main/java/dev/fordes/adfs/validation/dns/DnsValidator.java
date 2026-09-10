@@ -1,47 +1,28 @@
 package dev.fordes.adfs.validation.dns;
 
-import java.util.ArrayDeque;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Queue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.function.Function;
-import java.util.function.Predicate;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
-import jakarta.inject.Singleton;
-
 import dev.fordes.adfs.config.EffectiveConfig.DnsConfig;
 import dev.fordes.adfs.error.DnsException;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.report.ProcessingMetrics;
-import dev.fordes.adfs.rule.model.DomainName;
-import dev.fordes.adfs.rule.model.AdblockNetworkRule;
-import dev.fordes.adfs.rule.model.AdblockPattern;
-import dev.fordes.adfs.rule.model.CosmeticRule;
-import dev.fordes.adfs.rule.model.DomainRule;
-import dev.fordes.adfs.rule.model.ExactDomain;
-import dev.fordes.adfs.rule.model.HostMappingRule;
-import dev.fordes.adfs.rule.model.IpCidrRule;
-import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.RuleEntry;
-import dev.fordes.adfs.rule.model.DnsAddressRule;
-import dev.fordes.adfs.rule.model.SafariRule;
-import dev.fordes.adfs.rule.model.RouteRule;
 import dev.fordes.adfs.rule.dedup.RuleDeduplicator;
+import dev.fordes.adfs.rule.model.*;
 import dev.fordes.adfs.rule.spool.RuleSpool;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+
+import java.util.ArrayDeque;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.*;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 @Singleton
 @Slf4j
 public final class DnsValidator {
+
 
     private static final DnsResolver FAILED_RESOLVER = new DnsResolver() {
         @Override

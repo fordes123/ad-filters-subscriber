@@ -1,27 +1,25 @@
 package dev.fordes.adfs;
 
-import java.nio.file.Path;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.Callable;
-
+import dev.fordes.adfs.application.AdfsRunner;
+import dev.fordes.adfs.config.CliConfiguration;
+import dev.fordes.adfs.error.AdfsException;
+import dev.fordes.adfs.error.ConfigurationException;
+import dev.fordes.adfs.error.ExitCode;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.env.Environment;
 import io.micronaut.context.exceptions.BeanContextException;
 import io.micronaut.core.annotation.Nullable;
-import io.micronaut.core.version.VersionUtils;
-import picocli.CommandLine;
 import lombok.extern.slf4j.Slf4j;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.InitializationException;
 import picocli.CommandLine.Option;
 
-import dev.fordes.adfs.application.AdfsRunner;
-import dev.fordes.adfs.config.CliConfiguration;
-import dev.fordes.adfs.error.AdfsException;
-import dev.fordes.adfs.error.ExitCode;
-import dev.fordes.adfs.error.ConfigurationException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.concurrent.Callable;
 
 @Slf4j
 @Command(

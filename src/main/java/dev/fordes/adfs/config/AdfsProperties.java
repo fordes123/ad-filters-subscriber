@@ -1,12 +1,11 @@
 package dev.fordes.adfs.config;
 
-import java.nio.file.Path;
-
 import io.micronaut.context.annotation.ConfigurationProperties;
 import io.micronaut.core.annotation.Nullable;
-
 import lombok.Getter;
 import lombok.Setter;
+
+import java.nio.file.Path;
 
 @Getter
 @Setter
@@ -19,4 +18,5 @@ public final class AdfsProperties {
     public void setFileHeader(@Nullable String fileHeader) {
         this.fileHeader = fileHeader;
     }
+
 }

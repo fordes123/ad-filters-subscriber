@@ -1,16 +1,14 @@
 package dev.fordes.adfs.config;
 
-import java.util.List;
-
+import io.micronaut.context.annotation.ConfigurationProperties;
+import io.micronaut.validation.Validated;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-
-import io.micronaut.context.annotation.ConfigurationProperties;
-import io.micronaut.validation.Validated;
-
 import lombok.Getter;
 import lombok.Setter;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -28,4 +26,5 @@ public final class RuleProperties {
 
     @NotNull
     private List<String> whitelist = List.of();
+
 }

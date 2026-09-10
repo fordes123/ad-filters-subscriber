@@ -1,11 +1,10 @@
 package dev.fordes.adfs.application;
 
-import jakarta.inject.Singleton;
-
 import dev.fordes.adfs.config.ConfigValidator;
 import dev.fordes.adfs.config.EffectiveConfig;
 import dev.fordes.adfs.error.ExitCode;
 import dev.fordes.adfs.report.RunReporter;
+import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 
 @Singleton

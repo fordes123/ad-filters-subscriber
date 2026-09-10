@@ -1,16 +1,14 @@
 package dev.fordes.adfs.config;
 
-import java.time.Duration;
-
+import io.micronaut.context.annotation.ConfigurationProperties;
+import io.micronaut.validation.Validated;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-
-import io.micronaut.context.annotation.ConfigurationProperties;
-import io.micronaut.validation.Validated;
-
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.Duration;
 
 @Getter
 @Setter
@@ -27,4 +25,5 @@ public final class DnsCacheProperties {
 
     @NotNull
     private Duration maxNegativeTtl = Duration.ofMinutes(1);
+
 }

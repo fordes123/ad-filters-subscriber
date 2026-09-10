@@ -1,12 +1,10 @@
 package dev.fordes.adfs.config;
 
-import jakarta.validation.constraints.NotBlank;
-
 import io.micronaut.context.annotation.EachProperty;
 import io.micronaut.context.annotation.Parameter;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.validation.Validated;
-
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -35,4 +33,5 @@ public final class OutputProperties {
     public void setFileHeader(@Nullable String fileHeader) {
         this.fileHeader = fileHeader;
     }
+
 }

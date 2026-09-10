@@ -1,25 +1,19 @@
 package dev.fordes.adfs.rule.spool;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import dev.fordes.adfs.error.OutputException;
+import dev.fordes.adfs.error.RuleProcessingException;
+import dev.fordes.adfs.format.RuleConsumer;
+import dev.fordes.adfs.rule.model.RuleEntry;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
-import dev.fordes.adfs.error.OutputException;
-import dev.fordes.adfs.error.RuleProcessingException;
-import dev.fordes.adfs.format.RuleConsumer;
-import dev.fordes.adfs.rule.model.RuleEntry;
 
 @Slf4j
 public final class RuleSpool implements RuleConsumer, AutoCloseable {

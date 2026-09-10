@@ -1,11 +1,9 @@
 package dev.fordes.adfs.config;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-
 import io.micronaut.context.annotation.ConfigurationProperties;
 import io.micronaut.validation.Validated;
-
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,4 +20,5 @@ public final class InputLimitProperties {
     @Min(1_024)
     @Max(1_048_576)
     private int maxLineLength = 262_144;
+
 }

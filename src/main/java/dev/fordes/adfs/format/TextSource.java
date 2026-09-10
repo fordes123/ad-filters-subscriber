@@ -3,9 +3,8 @@ package dev.fordes.adfs.format;
 import java.util.Optional;
 import java.util.function.Consumer;
 
-import org.slf4j.MDC;
-
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import dev.fordes.adfs.config.EffectiveConfig.InputLimits;
 import dev.fordes.adfs.error.RuleProcessingException;
@@ -16,6 +15,7 @@ import dev.fordes.adfs.source.SourceSession;
 
 @Slf4j
 public final class TextSource {
+
 
 
     private TextSource() {

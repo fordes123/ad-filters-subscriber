@@ -1,17 +1,15 @@
 package dev.fordes.adfs.config;
 
-import java.time.Duration;
-import java.util.List;
-
+import io.micronaut.context.annotation.ConfigurationProperties;
+import io.micronaut.validation.Validated;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-
-import io.micronaut.context.annotation.ConfigurationProperties;
-import io.micronaut.validation.Validated;
-
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.Duration;
+import java.util.List;
 
 @Getter
 @Setter
@@ -40,4 +38,5 @@ public final class DnsProperties {
     @Min(1)
     @Max(64)
     private int maxCnameDepth = 16;
+
 }

@@ -1,6 +1,7 @@
 plugins {
     id("io.micronaut.application") version "5.0.2"
     id("com.gradleup.shadow") version "9.4.1"
+    id("io.micronaut.aot") version "5.0.2"
 }
 
 version = "2.0.0"
@@ -8,6 +9,7 @@ group = "dev.fordes.adfs"
 
 
 repositories {
+    mavenLocal()
     mavenCentral()
 }
 
@@ -22,8 +24,6 @@ dependencies {
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("jakarta.validation:jakarta.validation-api")
     implementation("dnsjava:dnsjava:${dnsJavaVersion}")
-
-
     compileOnly("org.projectlombok:lombok")
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("org.yaml:snakeyaml")
@@ -36,22 +36,8 @@ application {
 }
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
-    }
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 25
-    // Micronaut 与 Picocli 处理器不会声明消费全部参与元数据分析的注解。
-    options.compilerArgs.addAll(["-Xlint:all", "-Xlint:-processing", "-Werror"])
-}
-
-tasks.named("shadowJar") {
-    mergeServiceFiles()
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    sourceCompatibility = JavaVersion.toVersion("25")
+    targetCompatibility = JavaVersion.toVersion("25")
 }
 
 
@@ -68,7 +54,7 @@ micronaut {
     testRuntime("junit5")
     processing {
         incremental(true)
-        annotations("dev.fordes.adfs.*")
+        annotations("dev.fordes.*")
     }
 }
 
@@ -82,4 +68,3 @@ tasks.named("dockerfile") {
 tasks.withType(AbstractTestTask).configureEach {
     failOnNoDiscoveredTests = false
 }
-

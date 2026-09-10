@@ -1,57 +1,25 @@
 package dev.fordes.adfs.format.singbox;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.JsonGenerator;
-import tools.jackson.core.JsonParser;
-import tools.jackson.core.JsonToken;
-import tools.jackson.core.ObjectReadContext;
-import tools.jackson.core.ObjectWriteContext;
-import tools.jackson.core.StreamReadConstraints;
-import tools.jackson.core.StreamReadFeature;
-import tools.jackson.core.json.JsonFactory;
-
 import dev.fordes.adfs.config.EffectiveConfig.RuleConfig;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.RuleProcessingException;
+import dev.fordes.adfs.format.ParseResult;
 import dev.fordes.adfs.format.RuleConsumer;
 import dev.fordes.adfs.format.RuleParser;
-import dev.fordes.adfs.format.ParseResult;
+import dev.fordes.adfs.rule.model.*;
 import dev.fordes.adfs.rule.spool.RuleSpool;
-import dev.fordes.adfs.rule.model.AllOf;
-import dev.fordes.adfs.rule.model.AnyOf;
-import dev.fordes.adfs.rule.model.DomainEnvelope;
-import dev.fordes.adfs.rule.model.DomainMatch;
-import dev.fordes.adfs.rule.model.DomainName;
-import dev.fordes.adfs.rule.model.ExactDomain;
-import dev.fordes.adfs.rule.model.IpCidr;
-import dev.fordes.adfs.rule.model.IpCidrMatch;
-import dev.fordes.adfs.rule.model.KeywordDomain;
-import dev.fordes.adfs.rule.model.MatchExpression;
-import dev.fordes.adfs.rule.model.MatchSide;
-import dev.fordes.adfs.rule.model.NetworkMatch;
-import dev.fordes.adfs.rule.model.Not;
-import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.PortMatch;
-import dev.fordes.adfs.rule.model.ProcessMatch;
-import dev.fordes.adfs.rule.model.RegexDomain;
-import dev.fordes.adfs.rule.model.RouteRule;
-import dev.fordes.adfs.rule.model.RuleEntry;
-import dev.fordes.adfs.rule.model.SuffixDomain;
-import dev.fordes.adfs.rule.model.Subdomain;
 import dev.fordes.adfs.source.SourceSession;
 import dev.fordes.adfs.source.Utf8Reader;
-import dev.fordes.adfs.rule.model.IpAddress;
-import dev.fordes.adfs.rule.model.IpFamily;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import tools.jackson.core.*;
+import tools.jackson.core.json.JsonFactory;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 public final class SingBoxParser implements RuleParser {

@@ -1,5 +1,13 @@
 package dev.fordes.adfs.source;
 
+import dev.fordes.adfs.config.EffectiveConfig;
+import dev.fordes.adfs.config.EffectiveConfig.HttpConfig;
+import dev.fordes.adfs.config.InputSpec;
+import dev.fordes.adfs.config.InputSpec.HttpSource;
+import dev.fordes.adfs.error.InputException;
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,16 +21,6 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
-
-import jakarta.inject.Singleton;
-
-import lombok.extern.slf4j.Slf4j;
-
-import dev.fordes.adfs.config.EffectiveConfig.HttpConfig;
-import dev.fordes.adfs.config.EffectiveConfig;
-import dev.fordes.adfs.config.InputSpec.HttpSource;
-import dev.fordes.adfs.config.InputSpec;
-import dev.fordes.adfs.error.InputException;
 
 @Singleton
 public final class HttpSourceReader implements SourceReader {

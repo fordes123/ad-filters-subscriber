@@ -1,17 +1,5 @@
 package dev.fordes.adfs.format.adblock;
 
-import java.net.URI;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.BiConsumer;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
 import dev.fordes.adfs.config.EffectiveConfig.InputLimits;
 import dev.fordes.adfs.config.EffectiveConfig.PreprocessorConfig;
 import dev.fordes.adfs.error.InputException;
@@ -21,6 +9,12 @@ import dev.fordes.adfs.source.BoundedLineReader;
 import dev.fordes.adfs.source.SourceLine;
 import dev.fordes.adfs.source.SourceSession;
 import dev.fordes.adfs.source.SourceStream;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+
+import java.net.URI;
+import java.util.*;
+import java.util.function.BiConsumer;
 
 @Slf4j
 final class AdblockPreprocessor {

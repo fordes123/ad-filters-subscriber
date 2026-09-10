@@ -58,7 +58,7 @@ jobs:
           - runner: windows-latest
             asset_suffix: windows-x86_64.exe
             executable: build/native/nativeCompile/adfs.exe
-          - runner: macos-15
+          - runner: macos-latest
             asset_suffix: macos-aarch64
             executable: build/native/nativeCompile/adfs
     runs-on: ${{ matrix.runner }}
@@ -80,11 +80,11 @@ jobs:
         run: bash ./gradlew --no-daemon nativeCompile
 
       - name: Stage native executable
-        shell: pwsh
+        shell: bash
         run: |
-          & "${{ matrix.executable }}" --version
-          New-Item -ItemType Directory -Path release -Force | Out-Null
-          Copy-Item -LiteralPath "${{ matrix.executable }}" -Destination "release/adfs-${{ needs.verify.outputs.version }}-${{ matrix.asset_suffix }}"
+          "${{ matrix.executable }}" --version
+          mkdir -p release
+          cp "${{ matrix.executable }}" "release/adfs-${{ needs.verify.outputs.version }}-${{ matrix.asset_suffix }}"
 
       - name: Upload native executable
         uses: actions/upload-artifact@v7

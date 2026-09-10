@@ -1,65 +1,26 @@
 package dev.fordes.adfs.format;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Set;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
 import dev.fordes.adfs.config.ContainerFormat;
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.OutputException;
-import dev.fordes.adfs.rule.spool.RuleSpool;
 import dev.fordes.adfs.format.conversion.AdblockDomainConversion;
 import dev.fordes.adfs.format.conversion.DedupMode;
 import dev.fordes.adfs.format.conversion.ProjectedRule;
 import dev.fordes.adfs.format.conversion.RegexCompatibility;
-import dev.fordes.adfs.rule.conversion.ConversionDecision;
-import dev.fordes.adfs.rule.conversion.ConversionLoss;
-import dev.fordes.adfs.rule.conversion.ConversionPolicy;
-import dev.fordes.adfs.rule.conversion.ConversionScope;
-import dev.fordes.adfs.rule.conversion.WhitelistMatcher;
+import dev.fordes.adfs.rule.conversion.*;
 import dev.fordes.adfs.rule.dedup.OutputDeduplicator;
-import dev.fordes.adfs.rule.model.AdblockNetworkRule;
-import dev.fordes.adfs.rule.model.AdblockPattern;
-import dev.fordes.adfs.rule.model.AllOf;
-import dev.fordes.adfs.rule.model.AnyOf;
-import dev.fordes.adfs.rule.model.CosmeticRule;
-import dev.fordes.adfs.rule.model.DomainMatch;
-import dev.fordes.adfs.rule.model.DomainName;
-import dev.fordes.adfs.rule.model.DomainPattern;
-import dev.fordes.adfs.rule.model.DomainRule;
-import dev.fordes.adfs.rule.model.ExactDomain;
-import dev.fordes.adfs.rule.model.HostMappingRule;
-import dev.fordes.adfs.rule.model.IpAddress;
-import dev.fordes.adfs.rule.model.IpCidr;
-import dev.fordes.adfs.rule.model.IpCidrMatch;
-import dev.fordes.adfs.rule.model.IpCidrRule;
-import dev.fordes.adfs.rule.model.IpFamily;
-import dev.fordes.adfs.rule.model.KeywordDomain;
-import dev.fordes.adfs.rule.model.MatchExpression;
-import dev.fordes.adfs.rule.model.MatchSide;
-import dev.fordes.adfs.rule.model.NetworkMatch;
-import dev.fordes.adfs.rule.model.Not;
-import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.PortMatch;
-import dev.fordes.adfs.rule.model.ProcessMatch;
-import dev.fordes.adfs.rule.model.RegexDomain;
-import dev.fordes.adfs.rule.model.RouteRule;
-import dev.fordes.adfs.rule.model.RuleAction;
-import dev.fordes.adfs.rule.model.RuleEntry;
-import dev.fordes.adfs.rule.model.DnsAddressRule;
-import dev.fordes.adfs.rule.model.SafariRule;
-import dev.fordes.adfs.rule.model.SuffixDomain;
-import dev.fordes.adfs.rule.model.Subdomain;
-import dev.fordes.adfs.rule.model.WildcardSyntax;
-import dev.fordes.adfs.rule.model.WildcardDomain;
+import dev.fordes.adfs.rule.model.*;
+import dev.fordes.adfs.rule.spool.RuleSpool;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Set;
 
 @Slf4j
 public final class BasicRuleWriter implements RuleWriter {

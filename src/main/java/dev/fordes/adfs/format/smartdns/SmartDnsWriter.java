@@ -1,25 +1,10 @@
 package dev.fordes.adfs.format.smartdns;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
-import org.slf4j.MDC;
-
-import lombok.extern.slf4j.Slf4j;
-
 import dev.fordes.adfs.config.OutputSpec;
 import dev.fordes.adfs.config.RuleDialect;
 import dev.fordes.adfs.config.RuleType;
 import dev.fordes.adfs.error.OutputException;
-import dev.fordes.adfs.format.RuleWriter;
-import dev.fordes.adfs.format.FinishResult;
-import dev.fordes.adfs.format.DnsAddressEncoding;
-import dev.fordes.adfs.format.OutputRuleProcessor;
-import dev.fordes.adfs.format.WriteResult;
+import dev.fordes.adfs.format.*;
 import dev.fordes.adfs.format.conversion.AdblockDomainConversion;
 import dev.fordes.adfs.format.conversion.DedupMode;
 import dev.fordes.adfs.format.conversion.ProjectedRule;
@@ -27,26 +12,18 @@ import dev.fordes.adfs.rule.conversion.ConversionDecision;
 import dev.fordes.adfs.rule.conversion.ConversionLoss;
 import dev.fordes.adfs.rule.conversion.ConversionPolicy;
 import dev.fordes.adfs.rule.conversion.ConversionScope;
-import dev.fordes.adfs.rule.spool.RuleSpool;
 import dev.fordes.adfs.rule.dedup.OutputDeduplicator;
-import dev.fordes.adfs.rule.model.AdblockNetworkRule;
-import dev.fordes.adfs.rule.model.CosmeticRule;
-import dev.fordes.adfs.rule.model.DomainName;
-import dev.fordes.adfs.rule.model.DomainPattern;
-import dev.fordes.adfs.rule.model.DomainRule;
-import dev.fordes.adfs.rule.model.ExactDomain;
-import dev.fordes.adfs.rule.model.HostMappingRule;
-import dev.fordes.adfs.rule.model.IpCidrRule;
-import dev.fordes.adfs.rule.model.OpaqueRule;
-import dev.fordes.adfs.rule.model.RouteRule;
-import dev.fordes.adfs.rule.model.RuleAction;
-import dev.fordes.adfs.rule.model.RuleEntry;
-import dev.fordes.adfs.rule.model.DnsAddressRule;
-import dev.fordes.adfs.rule.model.SafariRule;
-import dev.fordes.adfs.rule.model.SuffixDomain;
-import dev.fordes.adfs.rule.model.Subdomain;
-import dev.fordes.adfs.rule.model.WildcardSyntax;
-import dev.fordes.adfs.rule.model.WildcardDomain;
+import dev.fordes.adfs.rule.model.*;
+import dev.fordes.adfs.rule.spool.RuleSpool;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 public final class SmartDnsWriter implements RuleWriter {
@@ -59,6 +36,7 @@ public final class SmartDnsWriter implements RuleWriter {
     private final OutputStream output;
     private final OutputRuleProcessor<String> processor;
     private boolean finished;
+
 
     public SmartDnsWriter(
             OutputSpec target,
