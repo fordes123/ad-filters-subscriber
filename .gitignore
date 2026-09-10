@@ -24,4 +24,7 @@ hs_err_pid*
 
 .idea
 target
-src/test
+.gradle
+build/
+/rule/
+logs/
