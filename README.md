@@ -32,11 +32,11 @@ adfs
 adfs -c path/to/application.yml
 ```
 
-未指定 `-c/--config` 时，依次查找程序目录的 `application.yml`、`config/application.yml`，使用第一个存在的文件。
+未指定 `-c/--config` 时，依次查找程序目录的 `application.yaml`、`config/application.yaml`，使用第一个存在的文件。
 
 ### GitHub Actions
 
-1. Fork 仓库并修改 `config/application.yml`。
+1. Fork 仓库并修改 `config/application.yaml`。
 2. 在 **Actions** 页面启用工作流。
 3. 运行 **Update Filters**，或等待每 8 小时自动执行。
 
@@ -77,7 +77,7 @@ adfs:
 ```
 
 完整配置见
-[`config/application.yml`](./config/application-example.yaml)。
+[`config/application.yaml`](./config/application-example.yaml)。
 
 ## License
 

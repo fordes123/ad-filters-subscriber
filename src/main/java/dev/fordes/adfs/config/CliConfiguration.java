@@ -36,7 +36,11 @@ public final class CliConfiguration {
         Path selected = explicitFile;
         if (selected == null) {
             Path directory = ProgramLocation.directory();
-            for (Path candidate : List.of(directory.resolve("application.yml"), directory.resolve("config/application.yml"))) {
+            for (Path candidate : List.of(
+                    directory.resolve("application.yml"),
+                    directory.resolve("application.yaml"),
+                    directory.resolve("config/application.yml"),
+                    directory.resolve("config/application.yaml"))) {
                 if (!Files.notExists(candidate, LinkOption.NOFOLLOW_LINKS)) {
                     selected = candidate;
                     break;

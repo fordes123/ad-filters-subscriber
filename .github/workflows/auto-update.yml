@@ -47,7 +47,7 @@ jobs:
         run: |
           bash ./gradlew --no-daemon shadowJar
           mkdir -p logs
-          java -jar "$(find build/libs -maxdepth 1 -name 'adfs-*-all.jar')" -c config/application.yml
+          java -jar "$(find build/libs -maxdepth 1 -name 'adfs-*-all.jar')" -c config/application.yaml
 
       - name: Upload logs
         if: always()
